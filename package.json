@@ -1,14 +1,16 @@
 {
-  "name": "sih",
+  "name": "privacy-vision-agent",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:extension": "tsc && vite build --mode extension && node scripts/build-extension.js"
   },
   "devDependencies": {
+    "@types/chrome": "^0.0.287",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",

@@ -14,6 +14,7 @@ import {
 } from '../components/ui/Icons'
 import { captureFromHTML, getMockCaptureData, getMockHTML } from '../services/capture'
 import { scan } from '../services/scanner'
+import { isExtension, captureActiveTab } from '../services/extension-bridge'
 import type { ScanResult, CaptureData, CaptureStatus, DOMNodeInfo } from '../types/scan'
 import type { PageId } from '../types/navigation'
 
@@ -57,21 +58,38 @@ export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCapt
     const content = inputMode === 'paste' ? html.trim() : ''
     const targetUrl = url.trim() || 'pasted-content'
 
-    if (inputMode === 'url' && !url.trim()) return
+    if (inputMode === 'url' && !url.trim() && !isExtension()) return
     if (inputMode === 'paste' && !content) return
 
     setStatus('capturing')
     setScanResult(null)
 
-    setTimeout(() => {
-      const captureData = inputMode === 'url'
-        ? getMockCaptureData()
-        : captureFromHTML(targetUrl, content)
+    if (inputMode === 'url' && isExtension()) {
+      captureActiveTab()
+        .then((tabData) => {
+          const captureData = captureFromHTML(tabData.url, tabData.dom)
+          setCapture(captureData)
+          setUrl(tabData.url)
+          onCaptureDOM(captureData.dom)
+          setStatus('captured')
+        })
+        .catch(() => {
+          const captureData = getMockCaptureData()
+          setCapture(captureData)
+          onCaptureDOM(captureData.dom)
+          setStatus('captured')
+        })
+    } else {
+      setTimeout(() => {
+        const captureData = inputMode === 'url'
+          ? getMockCaptureData()
+          : captureFromHTML(targetUrl, content)
 
-      setCapture(captureData)
-      onCaptureDOM(captureData.dom)
-      setStatus('captured')
-    }, 1200)
+        setCapture(captureData)
+        onCaptureDOM(captureData.dom)
+        setStatus('captured')
+      }, 1200)
+    }
   }, [url, html, inputMode, onCaptureDOM])
 
   const handleAnalyze = useCallback(() => {
@@ -171,7 +189,9 @@ export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCapt
                 />
               </div>
               <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
-                URL capture uses mock data in this environment. Real browser capture will be available with a browser extension.
+                {isExtension()
+                  ? 'Captures the DOM of the currently active browser tab.'
+                  : 'URL capture uses mock data in this environment. Load as a Chrome extension for real tab capture.'}
               </p>
             </div>
           ) : (
@@ -239,10 +259,10 @@ export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCapt
               <Button
                 variant="primary"
                 onClick={handleCapture}
-                disabled={inputMode === 'url' ? !url.trim() : !html.trim()}
+                disabled={inputMode === 'url' ? (!url.trim() && !isExtension()) : !html.trim()}
                 icon={<CameraIcon size={14} />}
               >
-                Capture
+                {inputMode === 'url' && isExtension() ? 'Capture Active Tab' : 'Capture'}
               </Button>
             )}
             {status === 'captured' && (
