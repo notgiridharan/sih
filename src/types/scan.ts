@@ -4,12 +4,33 @@ export interface ScanTarget {
   screenshot: string | null
 }
 
+export type PIICategory =
+  | 'email'
+  | 'phone'
+  | 'ssn'
+  | 'credit_card'
+  | 'address'
+  | 'name'
+  | 'date_of_birth'
+  | 'pan'
+  | 'aadhaar'
+  | 'bank_account'
+  | 'upi_id'
+  | 'password_field'
+  | 'api_key'
+  | 'session_id'
+  | 'custom'
+
 export interface PIIMatch {
-  type: 'email' | 'phone' | 'ssn' | 'credit_card' | 'address' | 'name' | 'custom'
+  type: PIICategory
   value: string
   redacted: string
   location: PIILocation
   confidence: number
+  risk: RiskLevel
+  action: string
+  elementTag?: string
+  detectedBy: 'regex' | 'heuristic' | 'dom-inspection' | 'ml'
 }
 
 export interface PIILocation {
