@@ -24,7 +24,7 @@ import {
 } from '../data/mock'
 import type { PageId } from '../types/navigation'
 import type { PipelineStatus, ScanStatus, RecentScan } from '../data/mock'
-import type { RiskLevel } from '../types/scan'
+import type { RiskLevel, ScanResult } from '../types/scan'
 
 function timeAgo(ts: number): string {
   const diff = Date.now() - ts
@@ -39,21 +39,39 @@ function timeAgo(ts: number): string {
 
 interface DashboardProps {
   onNavigate: (page: PageId) => void
+  scanResults: ScanResult[]
 }
 
-export function Dashboard({ onNavigate }: DashboardProps) {
+function computeMetrics(results: ScanResult[]) {
+  if (results.length === 0) return mockMetrics
+  const maxPrivacy = Math.max(...results.map((r) => r.risk.privacy))
+  const maxInjection = Math.max(...results.map((r) => r.risk.injection))
+  const totalPii = results.reduce((n, s) => n + s.piiMatches.length, 0)
+  const totalInj = results.reduce((n, s) => n + s.promptInjections.length, 0)
+  return {
+    privacyRiskScore: maxPrivacy,
+    injectionRiskScore: maxInjection,
+    sensitiveElements: totalPii,
+    suspiciousInstructions: totalInj,
+    pagesScanned: results.length,
+  }
+}
+
+export function Dashboard({ onNavigate, scanResults }: DashboardProps) {
+  const metrics = computeMetrics(scanResults)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <MetricCards />
+      <MetricCards metrics={metrics} />
       <AnalysisPipeline />
-      <RecentScansTable onNavigate={onNavigate} />
+      <RecentScansTable onNavigate={onNavigate} scanResults={scanResults} />
     </div>
   )
 }
 
 /* ─── Metric Cards ──────────────────────────────────────────────── */
 
-function MetricCards() {
+function MetricCards({ metrics }: { metrics: ReturnType<typeof computeMetrics> }) {
   return (
     <div style={{
       display: 'grid',
@@ -64,7 +82,7 @@ function MetricCards() {
     >
       <MetricCard
         label="Privacy Risk Score"
-        value={mockMetrics.privacyRiskScore}
+        value={metrics.privacyRiskScore}
         maxValue={100}
         icon={<ShieldIcon size={20} />}
         color="var(--orange)"
@@ -72,7 +90,7 @@ function MetricCards() {
       />
       <MetricCard
         label="Prompt Injection Risk"
-        value={mockMetrics.injectionRiskScore}
+        value={metrics.injectionRiskScore}
         maxValue={100}
         icon={<AlertIcon size={20} />}
         color="var(--red)"
@@ -80,19 +98,19 @@ function MetricCards() {
       />
       <MetricCard
         label="Sensitive Elements"
-        value={mockMetrics.sensitiveElements}
+        value={metrics.sensitiveElements}
         icon={<LockIcon size={20} />}
         color="var(--yellow)"
       />
       <MetricCard
         label="Suspicious Instructions"
-        value={mockMetrics.suspiciousInstructions}
+        value={metrics.suspiciousInstructions}
         icon={<EyeIcon size={20} />}
         color="var(--red)"
       />
       <MetricCard
         label="Pages Scanned"
-        value={mockMetrics.pagesScanned}
+        value={metrics.pagesScanned}
         icon={<GlobeIcon size={20} />}
         color="var(--cyan)"
       />
@@ -388,13 +406,45 @@ const SCAN_STATUS_STYLES: Record<ScanStatus, { label: string; variant: RiskLevel
   error: { label: 'Error', variant: 'critical' },
 }
 
-function RecentScansTable({ onNavigate }: { onNavigate: (page: PageId) => void }) {
+function scanResultToRecentScan(result: ScanResult): RecentScan {
+  const privacyScore = result.risk.privacy
+  const injectionScore = result.risk.injection
+  const privacyRisk = result.risk.overall
+  const injectionRisk: RiskLevel = injectionScore >= 80 ? 'critical' : injectionScore >= 60 ? 'high' : injectionScore >= 30 ? 'medium' : injectionScore > 0 ? 'low' : 'none'
+  const status: ScanStatus = result.risk.overall === 'critical' ? 'critical'
+    : result.risk.overall === 'none' ? 'clean' : 'warning'
+
+  const host = result.url.replace(/^https?:\/\//, '').split('/')[0]
+
+  return {
+    id: result.id,
+    website: result.url.replace(/^https?:\/\//, ''),
+    favicon: host.charAt(0).toUpperCase(),
+    time: result.timestamp,
+    privacyRisk,
+    privacyScore,
+    injectionRisk,
+    injectionScore,
+    findings: {
+      pii: result.piiMatches.length,
+      injections: result.promptInjections.length,
+      hidden: result.hiddenContent.length,
+    },
+    status,
+  }
+}
+
+function RecentScansTable({ onNavigate, scanResults }: { onNavigate: (page: PageId) => void; scanResults: ScanResult[] }) {
   const [hoveredRow, setHoveredRow] = useState<string | null>(null)
+
+  const recentScans: RecentScan[] = scanResults.length > 0
+    ? scanResults.map(scanResultToRecentScan)
+    : mockRecentScans
 
   return (
     <Panel
       title="Recent Scans"
-      subtitle={`${mockRecentScans.length} pages analyzed`}
+      subtitle={`${recentScans.length} pages analyzed`}
       action={
         <Button variant="ghost" size="sm" onClick={() => onNavigate('scan-history')}>
           View all
@@ -429,7 +479,7 @@ function RecentScansTable({ onNavigate }: { onNavigate: (page: PageId) => void }
             </tr>
           </thead>
           <tbody>
-            {mockRecentScans.map((scan) => (
+            {recentScans.map((scan) => (
               <ScanRow
                 key={scan.id}
                 scan={scan}
@@ -458,7 +508,6 @@ function ScanRow({ scan, hovered, onHover }: { scan: RecentScan; hovered: boolea
         cursor: 'pointer',
       }}
     >
-      {/* Website */}
       <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
@@ -492,24 +541,20 @@ function ScanRow({ scan, hovered, onHover }: { scan: RecentScan; hovered: boolea
         </div>
       </td>
 
-      {/* Time */}
       <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
         <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
           {timeAgo(scan.time)}
         </span>
       </td>
 
-      {/* Privacy Risk */}
       <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
         <RiskBar score={scan.privacyScore} level={scan.privacyRisk} />
       </td>
 
-      {/* Injection Risk */}
       <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
         <RiskBar score={scan.injectionScore} level={scan.injectionRisk} />
       </td>
 
-      {/* Findings */}
       <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {scan.findings.pii > 0 && (
@@ -529,12 +574,10 @@ function ScanRow({ scan, hovered, onHover }: { scan: RecentScan; hovered: boolea
         </div>
       </td>
 
-      {/* Status */}
       <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
         <Badge variant={statusInfo.variant} dot>{statusInfo.label}</Badge>
       </td>
 
-      {/* Action */}
       <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', width: 32 }}>
         <span style={{
           color: hovered ? 'var(--text-secondary)' : 'transparent',

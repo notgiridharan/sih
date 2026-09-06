@@ -3,9 +3,15 @@ import { Badge } from '../components/ui/Badge'
 import { Card } from '../components/ui/Card'
 import { EyeIcon } from '../components/ui/Icons'
 import { mockScanHistory } from '../data/mock'
+import type { ScanResult } from '../types/scan'
 
-export function VisualAnalysis() {
-  const allHidden = mockScanHistory.flatMap((s) =>
+interface VisualAnalysisProps {
+  scanResults: ScanResult[]
+}
+
+export function VisualAnalysis({ scanResults }: VisualAnalysisProps) {
+  const data = scanResults.length > 0 ? scanResults : mockScanHistory
+  const allHidden = data.flatMap((s) =>
     s.hiddenContent.map((h) => ({ ...h, url: s.url }))
   )
 

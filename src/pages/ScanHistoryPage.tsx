@@ -2,6 +2,7 @@ import { Panel } from '../components/ui/Panel'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { mockScanHistory } from '../data/mock'
+import type { ScanResult } from '../types/scan'
 
 function timeAgo(ts: number): string {
   const diff = Date.now() - ts
@@ -13,16 +14,27 @@ function timeAgo(ts: number): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-export function ScanHistoryPage() {
+interface ScanHistoryPageProps {
+  scanResults: ScanResult[]
+  onClearHistory: () => void
+}
+
+export function ScanHistoryPage({ scanResults, onClearHistory }: ScanHistoryPageProps) {
+  const data = scanResults.length > 0 ? scanResults : mockScanHistory
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          {mockScanHistory.length} scans recorded
+          {data.length} scans recorded
+          {scanResults.length === 0 && data.length > 0 && (
+            <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>(demo data)</span>
+          )}
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Button variant="secondary" size="sm">Export</Button>
-          <Button variant="danger" size="sm">Clear History</Button>
+          {scanResults.length > 0 && (
+            <Button variant="danger" size="sm" onClick={onClearHistory}>Clear History</Button>
+          )}
         </div>
       </div>
 
@@ -48,7 +60,7 @@ export function ScanHistoryPage() {
             <span>Time</span>
           </div>
 
-          {mockScanHistory.map((scan, i) => (
+          {data.map((scan, i) => (
             <div
               key={scan.id}
               style={{

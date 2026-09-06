@@ -3,9 +3,15 @@ import { Badge } from '../components/ui/Badge'
 import { Card } from '../components/ui/Card'
 import { ShieldIcon } from '../components/ui/Icons'
 import { mockScanHistory } from '../data/mock'
+import type { ScanResult } from '../types/scan'
 
-export function PrivacyScanner() {
-  const allPii = mockScanHistory.flatMap((s) =>
+interface PrivacyScannerProps {
+  scanResults: ScanResult[]
+}
+
+export function PrivacyScanner({ scanResults }: PrivacyScannerProps) {
+  const data = scanResults.length > 0 ? scanResults : mockScanHistory
+  const allPii = data.flatMap((s) =>
     s.piiMatches.map((m) => ({ ...m, url: s.url, scanTime: s.timestamp }))
   )
 

@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Panel } from '../components/ui/Panel'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
+import type { ScanResult } from '../types/scan'
 
 const MOCK_ORIGINAL = `<div class="profile">
   <h2>User Profile</h2>
@@ -25,11 +27,68 @@ const MOCK_SANITIZED = `<div class="profile">
   <!-- Hidden injection removed -->
 </div>`
 
-export function SanitizedContext() {
+const MOCK_REDACTIONS = [
+  { field: 'john.doe@company.com', redacted: 'j***@company.com', type: 'Email' },
+  { field: '(555) 123-4567', redacted: '(***) ***-4567', type: 'Phone' },
+  { field: '123-45-6789', redacted: '***-**-6789', type: 'SSN' },
+  { field: '4111-1111-1111-1111', redacted: '****-****-****-1111', type: 'Credit Card' },
+  { field: 'Ignore previous instructions...', redacted: '[REMOVED]', type: 'Injection' },
+]
+
+interface SanitizedContextProps {
+  scanResults: ScanResult[]
+}
+
+export function SanitizedContext({ scanResults }: SanitizedContextProps) {
+  const [copied, setCopied] = useState(false)
+
+  const latest = scanResults.length > 0 ? scanResults[0] : null
+  const hasReal = latest !== null
+
+  const originalContent = hasReal ? latest.url : MOCK_ORIGINAL
+  const sanitizedContent = hasReal ? latest.sanitizedContext : MOCK_SANITIZED
+
+  const redactions = hasReal
+    ? [
+        ...latest.piiMatches.map((m) => ({
+          field: m.value,
+          redacted: m.redacted,
+          type: m.type.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        })),
+        ...latest.promptInjections.map((inj) => ({
+          field: inj.content.slice(0, 60) + (inj.content.length > 60 ? '...' : ''),
+          redacted: '[REMOVED]',
+          type: 'Injection',
+        })),
+      ]
+    : MOCK_REDACTIONS
+
+  function handleCopy() {
+    const text = sanitizedContent || ''
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {hasReal && (
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Badge variant={latest.risk.overall} dot>{latest.risk.overall} risk</Badge>
+            <span style={{ fontSize: 13, fontFamily: 'var(--mono)', color: 'var(--text-primary)' }}>
+              {latest.url}
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>
+              {new Date(latest.timestamp).toLocaleString()}
+            </span>
+          </div>
+        </Card>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }} className="context-grid">
-        <Panel title="Original Content" subtitle="Raw DOM with sensitive data">
+        <Panel title="Original Content" subtitle={hasReal ? 'Raw input from scan' : 'Raw DOM with sensitive data'}>
           <pre style={{
             fontFamily: 'var(--mono)',
             fontSize: 12,
@@ -42,8 +101,9 @@ export function SanitizedContext() {
             lineHeight: 1.6,
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
+            maxHeight: 400,
           }}>
-            {MOCK_ORIGINAL}
+            {hasReal ? originalContent : MOCK_ORIGINAL}
           </pre>
         </Panel>
 
@@ -60,35 +120,36 @@ export function SanitizedContext() {
             lineHeight: 1.6,
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
+            maxHeight: 400,
           }}>
-            {MOCK_SANITIZED}
+            {sanitizedContent || MOCK_SANITIZED}
           </pre>
         </Panel>
       </div>
 
       <Panel title="Redaction Summary">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {[
-            { field: 'john.doe@company.com', redacted: 'j***@company.com', type: 'Email' },
-            { field: '(555) 123-4567', redacted: '(***) ***-4567', type: 'Phone' },
-            { field: '123-45-6789', redacted: '***-**-6789', type: 'SSN' },
-            { field: '4111-1111-1111-1111', redacted: '****-****-****-1111', type: 'Credit Card' },
-            { field: 'Ignore previous instructions...', redacted: '[REMOVED]', type: 'Injection' },
-          ].map((r, i) => (
-            <div key={i} style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '8px 0',
-              borderBottom: '1px solid var(--border)',
-              fontSize: 13,
-            }}>
-              <Badge variant={r.type === 'Injection' ? 'critical' : 'high'}>{r.type}</Badge>
-              <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--red)', textDecoration: 'line-through' }}>{r.field}</code>
-              <span style={{ color: 'var(--text-muted)' }}>-&gt;</span>
-              <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--green)' }}>{r.redacted}</code>
-            </div>
-          ))}
+          {redactions.length === 0 ? (
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', padding: '12px 0' }}>
+              No redactions applied — content is clean.
+            </p>
+          ) : (
+            redactions.map((r, i) => (
+              <div key={i} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '8px 0',
+                borderBottom: '1px solid var(--border)',
+                fontSize: 13,
+              }}>
+                <Badge variant={r.type === 'Injection' ? 'critical' : 'high'}>{r.type}</Badge>
+                <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--red)', textDecoration: 'line-through' }}>{r.field}</code>
+                <span style={{ color: 'var(--text-muted)' }}>&rarr;</span>
+                <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--green)' }}>{r.redacted}</code>
+              </div>
+            ))
+          )}
         </div>
       </Panel>
 
@@ -97,7 +158,9 @@ export function SanitizedContext() {
           <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
             Copy the sanitized context for use with your AI agent.
           </p>
-          <Button variant="primary" size="sm">Copy Sanitized Context</Button>
+          <Button variant="primary" size="sm" onClick={handleCopy}>
+            {copied ? 'Copied!' : 'Copy Sanitized Context'}
+          </Button>
         </div>
       </Card>
     </div>

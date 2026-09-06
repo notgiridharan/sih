@@ -3,9 +3,15 @@ import { Badge } from '../components/ui/Badge'
 import { Card } from '../components/ui/Card'
 import { AlertIcon } from '../components/ui/Icons'
 import { mockScanHistory } from '../data/mock'
+import type { ScanResult } from '../types/scan'
 
-export function InjectionScanner() {
-  const allInjections = mockScanHistory.flatMap((s) =>
+interface InjectionScannerProps {
+  scanResults: ScanResult[]
+}
+
+export function InjectionScanner({ scanResults }: InjectionScannerProps) {
+  const data = scanResults.length > 0 ? scanResults : mockScanHistory
+  const allInjections = data.flatMap((s) =>
     s.promptInjections.map((inj) => ({ ...inj, url: s.url, scanTime: s.timestamp }))
   )
 
