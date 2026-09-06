@@ -1,0 +1,10 @@
+export type PageId =
+  | 'dashboard'
+  | 'browser-capture'
+  | 'privacy-scanner'
+  | 'injection-scanner'
+  | 'visual-analysis'
+  | 'sanitized-context'
+  | 'security-report'
+  | 'scan-history'
+  | 'settings'
