@@ -18,19 +18,23 @@ function PageContent({
   scanResults,
   onScan,
   onClearHistory,
+  lastCapturedDOM,
+  onCaptureDOM,
 }: {
   page: PageId
   onNavigate: (p: PageId) => void
   scanResults: ScanResult[]
   onScan: (result: ScanResult) => void
   onClearHistory: () => void
+  lastCapturedDOM: string | null
+  onCaptureDOM: (dom: string) => void
 }) {
   switch (page) {
     case 'dashboard': return <Dashboard onNavigate={onNavigate} scanResults={scanResults} />
-    case 'browser-capture': return <BrowserCapture onScan={onScan} onNavigate={onNavigate} />
+    case 'browser-capture': return <BrowserCapture onScan={onScan} onNavigate={onNavigate} onCaptureDOM={onCaptureDOM} />
     case 'privacy-scanner': return <PrivacyScanner scanResults={scanResults} />
     case 'injection-scanner': return <InjectionScanner scanResults={scanResults} />
-    case 'visual-analysis': return <VisualAnalysis scanResults={scanResults} />
+    case 'visual-analysis': return <VisualAnalysis scanResults={scanResults} capturedDOM={lastCapturedDOM} />
     case 'sanitized-context': return <SanitizedContext scanResults={scanResults} />
     case 'security-report': return <SecurityReport scanResults={scanResults} />
     case 'scan-history': return <ScanHistoryPage scanResults={scanResults} onClearHistory={onClearHistory} />
@@ -42,6 +46,7 @@ export function App() {
   const [activePage, setActivePage] = useState<PageId>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [scanResults, setScanResults] = useState<ScanResult[]>([])
+  const [lastCapturedDOM, setLastCapturedDOM] = useState<string | null>(null)
 
   const handleScan = useCallback((result: ScanResult) => {
     setScanResults((prev) => [result, ...prev])
@@ -64,6 +69,8 @@ export function App() {
         scanResults={scanResults}
         onScan={handleScan}
         onClearHistory={handleClearHistory}
+        lastCapturedDOM={lastCapturedDOM}
+        onCaptureDOM={setLastCapturedDOM}
       />
     </Layout>
   )

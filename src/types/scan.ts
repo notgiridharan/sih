@@ -94,3 +94,51 @@ export interface CaptureData {
   domTree: DOMNodeInfo
   metadata: CaptureMetadata
 }
+
+export type ElementCategory =
+  | 'input'
+  | 'form'
+  | 'button'
+  | 'link'
+  | 'text'
+  | 'hidden'
+  | 'iframe'
+  | 'script'
+  | 'interactive'
+  | 'media'
+  | 'structural'
+
+export interface AnalyzedElement {
+  tag: string
+  category: ElementCategory
+  selector: string
+  id?: string
+  classes: string[]
+  attributes: Record<string, string>
+  visible: boolean
+  textContent: string
+  boundingBox: { x: number; y: number; width: number; height: number } | null
+  classification: 'safe' | 'sensitive' | 'suspicious' | 'unclassified'
+  children: AnalyzedElement[]
+  depth: number
+  index: number
+}
+
+export interface DOMAnalysisSummary {
+  inputs: number
+  forms: number
+  buttons: number
+  links: number
+  visibleText: number
+  hidden: number
+  iframes: number
+  scripts: number
+  interactive: number
+  total: number
+}
+
+export interface DOMAnalysis {
+  tree: AnalyzedElement
+  flatElements: AnalyzedElement[]
+  summary: DOMAnalysisSummary
+}

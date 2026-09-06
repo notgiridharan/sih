@@ -25,7 +25,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'browser-capture', label: 'Browser Capture', icon: <GlobeIcon />, section: 'Analysis' },
   { id: 'privacy-scanner', label: 'Privacy Scanner', icon: <ShieldIcon /> },
   { id: 'injection-scanner', label: 'Injection Scanner', icon: <AlertIcon /> },
-  { id: 'visual-analysis', label: 'Visual Analysis', icon: <EyeIcon /> },
+  { id: 'visual-analysis', label: 'DOM Analysis', icon: <EyeIcon /> },
   { id: 'sanitized-context', label: 'Sanitized Context', icon: <FileTextIcon />, section: 'Output' },
   { id: 'security-report', label: 'Security Report', icon: <ClipboardIcon /> },
   { id: 'scan-history', label: 'Scan History', icon: <ClockIcon />, section: 'History' },

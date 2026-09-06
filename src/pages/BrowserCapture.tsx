@@ -20,6 +20,7 @@ import type { PageId } from '../types/navigation'
 interface BrowserCaptureProps {
   onScan: (result: ScanResult) => void
   onNavigate: (page: PageId) => void
+  onCaptureDOM: (dom: string) => void
 }
 
 const STATUS_CONFIG: Record<CaptureStatus, { label: string; color: string; detail: string }> = {
@@ -44,7 +45,7 @@ function stepIndex(status: CaptureStatus): number {
   return WORKFLOW_STEPS.findIndex((s) => s.key === status)
 }
 
-export function BrowserCapture({ onScan, onNavigate }: BrowserCaptureProps) {
+export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCaptureProps) {
   const [url, setUrl] = useState('')
   const [html, setHtml] = useState('')
   const [status, setStatus] = useState<CaptureStatus>('idle')
@@ -68,9 +69,10 @@ export function BrowserCapture({ onScan, onNavigate }: BrowserCaptureProps) {
         : captureFromHTML(targetUrl, content)
 
       setCapture(captureData)
+      onCaptureDOM(captureData.dom)
       setStatus('captured')
     }, 1200)
-  }, [url, html, inputMode])
+  }, [url, html, inputMode, onCaptureDOM])
 
   const handleAnalyze = useCallback(() => {
     if (!capture) return
