@@ -1,7 +1,8 @@
 import type { ScanResult, ScanTarget, RiskLevel, RiskScore } from '../types/scan'
-import { detectPII, redactText } from './pii-detector'
+import { detectPII } from './pii-detector'
 import { detectPromptInjections } from './injection-detector'
 import { detectHiddenContent } from './hidden-content-detector'
+import { sanitizeContext } from './context-sanitizer'
 
 function computeRisk(result: Pick<ScanResult, 'piiMatches' | 'promptInjections' | 'hiddenContent'>): RiskScore {
   const privacyScore = Math.min(result.piiMatches.length * 20, 100)
@@ -33,7 +34,8 @@ export function scan(target: ScanTarget): ScanResult {
 
   const risk = computeRisk({ piiMatches, promptInjections, hiddenContent })
 
-  const sanitizedContext = redactText(target.dom, piiMatches)
+  const sanitization = sanitizeContext(target.dom, piiMatches, promptInjections, hiddenContent)
+  const sanitizedContext = sanitization.structuredContext
 
   return {
     id: crypto.randomUUID(),

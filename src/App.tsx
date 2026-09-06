@@ -35,7 +35,7 @@ function PageContent({
     case 'privacy-scanner': return <PrivacyScanner scanResults={scanResults} />
     case 'injection-scanner': return <InjectionScanner scanResults={scanResults} />
     case 'visual-analysis': return <VisualAnalysis scanResults={scanResults} capturedDOM={lastCapturedDOM} />
-    case 'sanitized-context': return <SanitizedContext scanResults={scanResults} />
+    case 'sanitized-context': return <SanitizedContext scanResults={scanResults} capturedDOM={lastCapturedDOM} />
     case 'security-report': return <SecurityReport scanResults={scanResults} />
     case 'scan-history': return <ScanHistoryPage scanResults={scanResults} onClearHistory={onClearHistory} />
     case 'settings': return <Settings />
