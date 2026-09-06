@@ -103,6 +103,24 @@ a {
   100% { transform: scale(1.5); opacity: 0; }
 }
 
+@keyframes scan-line {
+  0% { top: 0; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: calc(100% - 2px); opacity: 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.capture-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
 /* Responsive: tablet and below */
 @media (max-width: 768px) {
   .sidebar {
@@ -146,6 +164,10 @@ a {
   }
 
   .visual-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .capture-grid {
     grid-template-columns: 1fr !important;
   }
 }

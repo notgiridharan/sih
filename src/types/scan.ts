@@ -54,3 +54,43 @@ export interface ScanResult {
 }
 
 export type ScanStatus = 'idle' | 'capturing' | 'analyzing' | 'complete' | 'error'
+
+export type CaptureStatus = 'idle' | 'capturing' | 'captured' | 'analyzing' | 'complete' | 'error'
+
+export interface DOMNodeInfo {
+  tag: string
+  id?: string
+  classes?: string[]
+  childCount: number
+  textLength: number
+  attributes: Record<string, string>
+  children: DOMNodeInfo[]
+  hidden: boolean
+  depth: number
+}
+
+export interface CaptureMetadata {
+  title: string
+  elementCount: number
+  textNodeCount: number
+  scriptCount: number
+  styleCount: number
+  formCount: number
+  inputCount: number
+  linkCount: number
+  imageCount: number
+  iframeCount: number
+  hiddenElementCount: number
+  totalTextLength: number
+  doctype: string | null
+  charset: string | null
+}
+
+export interface CaptureData {
+  url: string
+  timestamp: number
+  dom: string
+  screenshot: string | null
+  domTree: DOMNodeInfo
+  metadata: CaptureMetadata
+}
