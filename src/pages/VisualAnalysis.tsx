@@ -13,6 +13,7 @@ import { generateReport, downloadReport } from '../services/report'
 interface VisualAnalysisProps {
   scanResults: ScanResult[]
   capturedDOM: string | null
+  viewingScan?: ScanResult | null
 }
 
 const CATEGORY_CONFIG: Record<ElementCategory, { label: string; color: string }> = {
@@ -36,8 +37,9 @@ const CLASSIFICATION_CONFIG: Record<string, { label: string; color: string; vari
   unclassified: { label: 'Unclassified', color: 'var(--text-muted)', variant: 'default' },
 }
 
-export function VisualAnalysis({ scanResults, capturedDOM }: VisualAnalysisProps) {
+export function VisualAnalysis({ scanResults, capturedDOM, viewingScan }: VisualAnalysisProps) {
   const hasRealData = scanResults.length > 0 || capturedDOM !== null
+  const isHistorical = viewingScan != null
 
   const analysis = useMemo<DOMAnalysis>(() => {
     const source = capturedDOM || getMockHTML()
@@ -64,6 +66,24 @@ export function VisualAnalysis({ scanResults, capturedDOM }: VisualAnalysisProps
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Historical scan indicator */}
+      {isHistorical && viewingScan && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '10px 16px',
+          borderRadius: 'var(--radius)',
+          background: 'var(--accent-muted)',
+          border: '1px solid var(--accent-border)',
+        }}>
+          <Badge variant="info" dot>Historical Scan</Badge>
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            Scanned {new Date(viewingScan.timestamp).toLocaleString()} — {viewingScan.url}
+          </span>
+        </div>
+      )}
+
       {/* Summary bar */}
       <div style={{
         display: 'grid',

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Card } from '../components/ui/Card'
 import { Panel } from '../components/ui/Panel'
 import { Badge } from '../components/ui/Badge'
@@ -22,6 +22,7 @@ import {
   mockPipeline,
   mockRecentScans,
 } from '../data/mock'
+import { computeStats, computeTrend, mostScannedDomains, highestRiskDomains } from '../services/history'
 import type { PageId } from '../types/navigation'
 import type { PipelineStatus, ScanStatus, RecentScan } from '../data/mock'
 import type { RiskLevel, ScanResult } from '../types/scan'
@@ -40,6 +41,7 @@ function timeAgo(ts: number): string {
 interface DashboardProps {
   onNavigate: (page: PageId) => void
   scanResults: ScanResult[]
+  storedScans: ScanResult[]
 }
 
 function computeMetrics(results: ScanResult[]) {
@@ -57,14 +59,162 @@ function computeMetrics(results: ScanResult[]) {
   }
 }
 
-export function Dashboard({ onNavigate, scanResults }: DashboardProps) {
-  const metrics = computeMetrics(scanResults)
+export function Dashboard({ onNavigate, scanResults, storedScans }: DashboardProps) {
+  const allScans = storedScans.length > 0 ? storedScans : scanResults
+  const metrics = computeMetrics(allScans)
+  const stats = useMemo(() => computeStats(allScans), [allScans])
+  const trend = useMemo(() => computeTrend(allScans), [allScans])
+  const topDomains = useMemo(() => mostScannedDomains(allScans, 5), [allScans])
+  const riskyDomains = useMemo(() => highestRiskDomains(allScans, 5), [allScans])
+  const hasRealData = allScans.length > 0
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <MetricCards metrics={metrics} />
+
+      {/* Stats overview from stored scans */}
+      {hasRealData && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: 14,
+        }} className="dashboard-grid-4">
+          <StatTile label="Total Scans" value={stats.totalScans} color="var(--cyan)" />
+          <StatTile label="Scans Today" value={stats.scansToday} color="var(--accent)" />
+          <StatTile label="Average Risk" value={stats.averageRisk} suffix="/100" color={stats.averageRisk >= 50 ? 'var(--orange)' : 'var(--green)'} />
+          <StatTile label="High-Risk Domains" value={stats.highRiskDomains} color="var(--red)" />
+        </div>
+      )}
+
+      {/* Risk level breakdown */}
+      {hasRealData && stats.totalScans > 0 && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(5, 1fr)',
+          gap: 14,
+        }} className="dashboard-grid-5">
+          <StatTile label="Critical Risks" value={stats.criticalCount} color="var(--red)" />
+          <StatTile label="High Risks" value={stats.highCount} color="var(--orange)" />
+          <StatTile label="Medium Risks" value={stats.mediumCount} color="var(--yellow)" />
+          <StatTile label="Low Risks" value={stats.lowCount} color="var(--green)" />
+          <StatTile label="Clean" value={stats.noneCount} color="var(--text-muted)" />
+        </div>
+      )}
+
+      {/* Risk trend */}
+      {hasRealData && trend.length >= 2 && (
+        <Panel title="Risk Trend" subtitle={`Last ${trend.length} days`}>
+          <TrendChart data={trend} />
+        </Panel>
+      )}
+      {hasRealData && trend.length < 2 && (
+        <Panel title="Risk Trend">
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '24px 0' }}>
+            Not enough scan history to calculate trends.
+          </p>
+        </Panel>
+      )}
+
+      {/* Domain statistics */}
+      {hasRealData && topDomains.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }} className="dashboard-grid-2">
+          <Panel title="Most Scanned Domains" noPadding>
+            <div>
+              {topDomains.map((d, i) => (
+                <div key={d.hostname} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 20px',
+                  borderBottom: i < topDomains.length - 1 ? '1px solid var(--border)' : 'none',
+                }}>
+                  <span style={{ fontSize: 13, fontFamily: 'var(--mono)', color: 'var(--text-primary)' }}>{d.hostname}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{d.scanCount} scan{d.scanCount !== 1 ? 's' : ''}</span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+          <Panel title="Highest Risk Domains" noPadding>
+            <div>
+              {riskyDomains.map((d, i) => (
+                <div key={d.hostname} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 20px',
+                  borderBottom: i < riskyDomains.length - 1 ? '1px solid var(--border)' : 'none',
+                }}>
+                  <span style={{ fontSize: 13, fontFamily: 'var(--mono)', color: 'var(--text-primary)' }}>{d.hostname}</span>
+                  <span style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    fontVariantNumeric: 'tabular-nums',
+                    color: d.highestScore >= 75 ? 'var(--red)' : d.highestScore >= 50 ? 'var(--orange)' : d.highestScore >= 25 ? 'var(--yellow)' : 'var(--green)',
+                  }}>
+                    {d.highestScore}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </div>
+      )}
+
       <AnalysisPipeline />
-      <RecentScansTable onNavigate={onNavigate} scanResults={scanResults} />
+      <RecentScansTable onNavigate={onNavigate} scanResults={allScans} />
+    </div>
+  )
+}
+
+/* ─── Stat Tile ─────────────────────────────────────────────────── */
+
+function StatTile({ label, value, suffix, color }: { label: string; value: number; suffix?: string; color: string }) {
+  return (
+    <Card>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+          {label}
+        </span>
+        <span style={{ fontSize: 28, fontWeight: 800, color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+          {value}{suffix && <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>{suffix}</span>}
+        </span>
+      </div>
+    </Card>
+  )
+}
+
+/* ─── Trend Chart ──────────────────────────────────────────────── */
+
+function TrendChart({ data }: { data: { date: string; avgScore: number; scanCount: number }[] }) {
+  const max = Math.max(...data.map(d => d.avgScore), 10)
+  const height = 140
+  const barWidth = Math.max(12, Math.min(40, 600 / data.length - 8))
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height, padding: '0 4px', minWidth: data.length * (barWidth + 6) }}>
+        {data.map((d) => {
+          const pct = (d.avgScore / max) * 100
+          const color = d.avgScore >= 75 ? 'var(--red)' : d.avgScore >= 50 ? 'var(--orange)' : d.avgScore >= 25 ? 'var(--yellow)' : 'var(--green)'
+          const dateLabel = d.date.slice(5)
+
+          return (
+            <div key={d.date} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: '0 0 auto' }}>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{d.avgScore}</span>
+              <div style={{
+                width: barWidth,
+                height: `${Math.max(pct, 2)}%`,
+                borderRadius: 'var(--radius-sm)',
+                background: color,
+                opacity: 0.8,
+                transition: 'height 0.3s ease',
+                minHeight: 4,
+              }} />
+              <span style={{ fontSize: 9, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{dateLabel}</span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
