@@ -99,6 +99,45 @@ export interface OCRResult {
   processingTimeMs: number
 }
 
+export type CorrelationType =
+  | 'VISUAL_PII_REQUEST'
+  | 'VISUAL_CREDENTIAL_REQUEST'
+  | 'VISUAL_OTP_REQUEST'
+  | 'VISUAL_PAYMENT_REQUEST'
+  | 'CROSS_MODAL_INJECTION'
+  | 'VISUAL_DOM_MISMATCH'
+  | 'HIDDEN_CONTENT_MISMATCH'
+
+export type CorrelationSeverity = 'low' | 'medium' | 'high' | 'critical'
+
+export interface CorrelationEvidence {
+  visual: {
+    ocrText: string
+    ocrConfidence: number
+    boundingBox?: { x: number; y: number; width: number; height: number }
+  } | null
+  dom: {
+    element: string
+    selector: string
+    matchedText: string
+    attributes?: Record<string, string>
+  } | null
+}
+
+export interface CorrelationFinding {
+  type: CorrelationType
+  severity: CorrelationSeverity
+  confidence: number
+  explanation: string
+  evidence: CorrelationEvidence
+}
+
+export interface CorrelationResult {
+  findings: CorrelationFinding[]
+  totalCorrelations: number
+  highestSeverity: CorrelationSeverity | 'none'
+}
+
 export interface RiskScore {
   overall: RiskLevel
   privacy: number
@@ -116,6 +155,7 @@ export interface ScanResult {
   hiddenContent: HiddenContent[]
   crossValidation: CrossValidationResult | null
   ocrResult: OCRResult | null
+  correlationResult: CorrelationResult | null
   risk: RiskScore
   sanitizedContext: string | null
 }

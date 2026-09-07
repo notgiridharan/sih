@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button'
 import { EyeIcon, CodeIcon, ShieldIcon, AlertIcon, CheckCircleIcon } from '../components/ui/Icons'
 import { analyzeDOM } from '../services/dom-analyzer'
 import { getMockHTML } from '../services/capture'
-import type { ScanResult, AnalyzedElement, DOMAnalysis, ElementCategory, RiskLevel, OCRStatus } from '../types/scan'
+import type { ScanResult, AnalyzedElement, DOMAnalysis, ElementCategory, RiskLevel, OCRStatus, CorrelationSeverity, CorrelationFinding } from '../types/scan'
 
 interface VisualAnalysisProps {
   scanResults: ScanResult[]
@@ -158,6 +158,9 @@ export function VisualAnalysis({ scanResults, capturedDOM }: VisualAnalysisProps
 
       {/* Local Visual Analysis (OCR) */}
       <OCRResultsPanel scanResults={scanResults} />
+
+      {/* Cross-Modal Correlations */}
+      <CorrelationPanel scanResults={scanResults} />
 
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1052,5 +1055,227 @@ function OCRResultsPanel({ scanResults }: { scanResults: ScanResult[] }) {
         )}
       </div>
     </Panel>
+  )
+}
+
+/* ─── Correlation Panel ─────────────────────────────────────── */
+
+const CORRELATION_TYPE_LABELS: Record<string, string> = {
+  VISUAL_PII_REQUEST: 'Visual PII Request',
+  VISUAL_CREDENTIAL_REQUEST: 'Visual Credential Request',
+  VISUAL_OTP_REQUEST: 'Visual OTP Request',
+  VISUAL_PAYMENT_REQUEST: 'Visual Payment Request',
+  CROSS_MODAL_INJECTION: 'Cross-Modal Injection',
+  VISUAL_DOM_MISMATCH: 'Visual/DOM Mismatch',
+  HIDDEN_CONTENT_MISMATCH: 'Hidden Content Mismatch',
+}
+
+const CORRELATION_SEVERITY_COLOR: Record<CorrelationSeverity | 'none', string> = {
+  none: 'var(--text-muted)',
+  low: 'var(--green)',
+  medium: 'var(--yellow)',
+  high: 'var(--orange)',
+  critical: 'var(--red)',
+}
+
+function CorrelationPanel({ scanResults }: { scanResults: ScanResult[] }) {
+  const corr = scanResults.length > 0 ? scanResults[0].correlationResult : null
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
+
+  return (
+    <Panel
+      title="Cross-Modal Correlations"
+      subtitle="Matches between visual (OCR) and DOM-detected security signals"
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {corr && corr.findings.length > 0 ? (
+          <>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              <StatusChip label="Correlation Engine" active />
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                {corr.totalCorrelations} correlation{corr.totalCorrelations !== 1 ? 's' : ''} found
+              </span>
+              <Badge variant={corr.highestSeverity as 'none' | 'low' | 'medium' | 'high' | 'critical'}>
+                {(corr.highestSeverity || 'none').toUpperCase()}
+              </Badge>
+            </div>
+
+            {corr.findings.map((finding, i) => (
+              <CorrelationCard
+                key={i}
+                finding={finding}
+                expanded={expandedIndex === i}
+                onToggle={() => setExpandedIndex(expandedIndex === i ? null : i)}
+              />
+            ))}
+          </>
+        ) : corr ? (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '12px 16px',
+            background: 'color-mix(in srgb, var(--green) 8%, var(--bg-input))',
+            borderRadius: 'var(--radius)',
+            border: '1px solid color-mix(in srgb, var(--green) 25%, var(--border))',
+          }}>
+            <CheckCircleIcon size={16} />
+            <span style={{ fontSize: 13, color: 'var(--green)' }}>No cross-modal correlations detected</span>
+          </div>
+        ) : (
+          <div style={{
+            padding: '20px 16px',
+            textAlign: 'center',
+            color: 'var(--text-muted)',
+            fontSize: 13,
+          }}>
+            Run a scan with OCR enabled to see cross-modal correlations
+          </div>
+        )}
+      </div>
+    </Panel>
+  )
+}
+
+function CorrelationCard({
+  finding,
+  expanded,
+  onToggle,
+}: {
+  finding: CorrelationFinding
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const sevColor = CORRELATION_SEVERITY_COLOR[finding.severity]
+
+  return (
+    <div style={{
+      background: 'var(--bg-input)',
+      borderRadius: 'var(--radius)',
+      borderLeft: `3px solid ${sevColor}`,
+      overflow: 'hidden',
+    }}>
+      <div
+        onClick={onToggle}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '10px 14px',
+          cursor: 'pointer',
+          transition: 'background 0.1s',
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-card-hover)'}
+        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+      >
+        <Badge variant={finding.severity as 'none' | 'low' | 'medium' | 'high' | 'critical'}>
+          {finding.severity.toUpperCase()}
+        </Badge>
+        <span style={{
+          fontSize: 12,
+          fontWeight: 700,
+          color: sevColor,
+          textTransform: 'uppercase',
+          letterSpacing: '0.03em',
+          flex: 1,
+        }}>
+          {CORRELATION_TYPE_LABELS[finding.type] || finding.type}
+        </span>
+        <span style={{
+          fontSize: 11,
+          color: finding.confidence >= 0.8 ? 'var(--green)' : finding.confidence >= 0.5 ? 'var(--yellow)' : 'var(--text-muted)',
+          fontWeight: 600,
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          {(finding.confidence * 100).toFixed(0)}%
+        </span>
+        <span style={{
+          fontSize: 10,
+          color: 'var(--text-muted)',
+          transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+          transition: 'transform 0.15s',
+        }}>
+          ▼
+        </span>
+      </div>
+
+      <p style={{
+        fontSize: 12,
+        color: 'var(--text-secondary)',
+        margin: 0,
+        padding: '0 14px 10px',
+        lineHeight: 1.5,
+      }}>
+        {finding.explanation}
+      </p>
+
+      {expanded && (
+        <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {finding.evidence.visual && (
+            <div style={{
+              padding: '8px 12px',
+              background: 'var(--bg-card)',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--border)',
+            }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 4 }}>
+                Visual Evidence
+              </span>
+              <code style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--cyan)', display: 'block' }}>
+                "{finding.evidence.visual.ocrText}"
+              </code>
+              <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
+                <span>OCR confidence: {(finding.evidence.visual.ocrConfidence * 100).toFixed(0)}%</span>
+                {finding.evidence.visual.boundingBox && (
+                  <span style={{ fontFamily: 'var(--mono)' }}>
+                    bbox: {finding.evidence.visual.boundingBox.x},{finding.evidence.visual.boundingBox.y} {finding.evidence.visual.boundingBox.width}x{finding.evidence.visual.boundingBox.height}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {finding.evidence.dom && (
+            <div style={{
+              padding: '8px 12px',
+              background: 'var(--bg-card)',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--border)',
+            }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 4 }}>
+                DOM Evidence
+              </span>
+              <code style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--orange)', display: 'block' }}>
+                &lt;{finding.evidence.dom.element}&gt;
+              </code>
+              <code style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text-muted)', display: 'block', marginTop: 2 }}>
+                {finding.evidence.dom.selector}
+              </code>
+              {finding.evidence.dom.matchedText && (
+                <span style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginTop: 4 }}>
+                  {finding.evidence.dom.matchedText}
+                </span>
+              )}
+              {finding.evidence.dom.attributes && Object.keys(finding.evidence.dom.attributes).length > 0 && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                  {Object.entries(finding.evidence.dom.attributes).map(([k, v]) => (
+                    <code key={k} style={{
+                      fontSize: 10,
+                      fontFamily: 'var(--mono)',
+                      padding: '1px 5px',
+                      background: 'var(--bg-input)',
+                      borderRadius: 3,
+                      color: 'var(--text-muted)',
+                    }}>
+                      {k}="{v}"
+                    </code>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

@@ -76,7 +76,7 @@ describe('OCR service', () => {
 describe('scanWithOCR integration', () => {
   it('returns ocrResult as skipped when no screenshot', async () => {
     const { scanWithOCR } = await import('./scanner')
-    const result = await scanWithOCR({ url: 'https://example.com', dom: '<p>Hello</p>' })
+    const result = await scanWithOCR({ url: 'https://example.com', dom: '<p>Hello</p>', screenshot: null })
     expect(result.ocrResult).not.toBeNull()
     expect(result.ocrResult!.status).toBe('skipped')
   })

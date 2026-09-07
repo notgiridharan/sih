@@ -5,6 +5,7 @@ import { detectHiddenContent } from './hidden-content-detector'
 import { sanitizeContext } from './context-sanitizer'
 import { crossValidate } from './cross-validator'
 import { runOCR, createSkippedResult } from './ocr'
+import { correlate } from './correlation'
 
 function computeRisk(result: Pick<ScanResult, 'piiMatches' | 'promptInjections' | 'hiddenContent' | 'crossValidation'>): RiskScore {
   const privacyScore = Math.min(result.piiMatches.length * 20, 100)
@@ -66,6 +67,7 @@ export function scan(target: ScanTarget): ScanResult {
     hiddenContent,
     crossValidation,
     ocrResult: null,
+    correlationResult: null,
     risk,
     sanitizedContext,
   }
@@ -87,6 +89,14 @@ export async function scanWithOCR(
     onOCRStatus?.('processing')
     const ocrResult = await runOCR(target.screenshot)
     result.ocrResult = ocrResult
+
+    result.correlationResult = correlate(
+      target.dom,
+      ocrResult,
+      result.piiMatches,
+      result.promptInjections,
+      result.hiddenContent,
+    )
   } catch {
     result.ocrResult = {
       text: '',
