@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import { correlate } from './correlation'
-import { detectPII } from './pii-detector'
 import { detectPromptInjections } from './injection-detector'
 import { detectHiddenContent } from './hidden-content-detector'
 import { scan } from './scanner'

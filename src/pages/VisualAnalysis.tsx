@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button'
 import { EyeIcon, CodeIcon, ShieldIcon, AlertIcon, CheckCircleIcon } from '../components/ui/Icons'
 import { analyzeDOM } from '../services/dom-analyzer'
 import { getMockHTML } from '../services/capture'
-import type { ScanResult, AnalyzedElement, DOMAnalysis, ElementCategory, RiskLevel, OCRStatus, CorrelationSeverity, CorrelationFinding } from '../types/scan'
+import type { ScanResult, AnalyzedElement, DOMAnalysis, ElementCategory, RiskLevel, OCRStatus, CorrelationSeverity, CorrelationFinding, RiskCategory } from '../types/scan'
 
 interface VisualAnalysisProps {
   scanResults: ScanResult[]
@@ -161,6 +161,9 @@ export function VisualAnalysis({ scanResults, capturedDOM }: VisualAnalysisProps
 
       {/* Cross-Modal Correlations */}
       <CorrelationPanel scanResults={scanResults} />
+
+      {/* Unified Risk Assessment */}
+      <RiskAssessmentPanel scanResults={scanResults} />
 
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1277,5 +1280,157 @@ function CorrelationCard({
         </div>
       )}
     </div>
+  )
+}
+
+const RISK_LEVEL_COLOR: Record<string, string> = {
+  none: 'var(--green)',
+  low: 'var(--cyan)',
+  medium: 'var(--yellow)',
+  high: 'var(--orange)',
+  critical: 'var(--red)',
+}
+
+const CATEGORY_LABELS: Record<RiskCategory, string> = {
+  privacy: 'Privacy',
+  injection: 'Injection',
+  deception: 'Deception',
+  overall: 'Overall',
+}
+
+function RiskAssessmentPanel({ scanResults }: { scanResults: ScanResult[] }) {
+  const latest = scanResults[scanResults.length - 1] ?? null
+  const assessment = latest?.riskAssessment ?? null
+
+  return (
+    <Panel
+      title="Unified Risk Assessment"
+      subtitle="Combined explainable risk scoring from all security findings"
+      action={assessment ? (
+        <Badge variant={assessment.level === 'none' ? 'none' : assessment.level === 'low' ? 'low' : assessment.level === 'medium' ? 'medium' : assessment.level === 'high' ? 'high' : 'critical'}>
+          {assessment.level.toUpperCase()} ({assessment.score}/100)
+        </Badge>
+      ) : undefined}
+    >
+
+      {!assessment ? (
+        <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+          Run a scan from Browser Capture to see the unified risk assessment.
+        </p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Score bar */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Risk Score</span>
+              <span style={{ fontWeight: 700, color: RISK_LEVEL_COLOR[assessment.level] }}>{assessment.score}/100</span>
+            </div>
+            <div style={{ height: 8, background: 'var(--bg-input)', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{
+                width: `${assessment.score}%`,
+                height: '100%',
+                background: RISK_LEVEL_COLOR[assessment.level],
+                borderRadius: 4,
+                transition: 'width 0.3s ease',
+              }} />
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+              Confidence: {(assessment.confidence * 100).toFixed(0)}%
+            </div>
+          </div>
+
+          {/* Category breakdown */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {(['privacy', 'injection', 'deception'] as RiskCategory[]).map(cat => {
+              const catData = assessment.categories[cat]
+              return (
+                <div key={cat} style={{
+                  padding: '10px 12px',
+                  background: 'var(--bg-card)',
+                  borderRadius: 'var(--radius)',
+                  border: '1px solid var(--border)',
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                    {CATEGORY_LABELS[cat]}
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: RISK_LEVEL_COLOR[catData.level] }}>
+                    {catData.score}
+                  </div>
+                  <div style={{ fontSize: 11, color: RISK_LEVEL_COLOR[catData.level], marginTop: 2 }}>
+                    {catData.level.toUpperCase()}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Explanation */}
+          <div style={{
+            padding: '10px 12px',
+            background: 'var(--bg-card)',
+            borderRadius: 'var(--radius)',
+            border: '1px solid var(--border)',
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+              Analysis
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+              {assessment.explanation}
+            </p>
+          </div>
+
+          {/* Recommendation */}
+          <div style={{
+            padding: '10px 12px',
+            background: assessment.level === 'critical' ? 'rgba(239,68,68,0.08)' : assessment.level === 'high' ? 'rgba(249,115,22,0.08)' : 'var(--bg-card)',
+            borderRadius: 'var(--radius)',
+            border: `1px solid ${assessment.level === 'critical' ? 'var(--red)' : assessment.level === 'high' ? 'var(--orange)' : 'var(--border)'}`,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+              Recommendation
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.5, margin: 0, fontWeight: assessment.level === 'critical' ? 600 : 400 }}>
+              {assessment.recommendation}
+            </p>
+          </div>
+
+          {/* Contributing findings */}
+          {assessment.contributions.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+                Contributing Findings ({assessment.contributions.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {assessment.contributions.map((c, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '6px 10px',
+                    background: 'var(--bg-card)',
+                    borderRadius: 'var(--radius)',
+                    border: '1px solid var(--border)',
+                    fontSize: 12,
+                  }}>
+                    <span style={{
+                      width: 8, height: 8, borderRadius: '50%',
+                      background: RISK_LEVEL_COLOR[c.severity],
+                      flexShrink: 0,
+                    }} />
+                    <span style={{ color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', minWidth: 60 }}>
+                      {c.category}
+                    </span>
+                    <span style={{ color: 'var(--text-secondary)', flex: 1 }}>
+                      {c.detail}
+                    </span>
+                    <span style={{ color: RISK_LEVEL_COLOR[c.severity], fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 600 }}>
+                      {c.score}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Panel>
   )
 }

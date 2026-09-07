@@ -146,6 +146,26 @@ export interface RiskScore {
   visualAnomaly: number
 }
 
+export type RiskCategory = 'privacy' | 'injection' | 'deception' | 'overall'
+
+export interface RiskContribution {
+  source: string
+  category: RiskCategory
+  score: number
+  severity: RiskLevel
+  detail: string
+}
+
+export interface RiskAssessment {
+  score: number
+  level: RiskLevel
+  confidence: number
+  categories: Record<RiskCategory, { score: number; level: RiskLevel }>
+  contributions: RiskContribution[]
+  explanation: string
+  recommendation: string
+}
+
 export interface ScanResult {
   id: string
   url: string
@@ -157,6 +177,7 @@ export interface ScanResult {
   ocrResult: OCRResult | null
   correlationResult: CorrelationResult | null
   risk: RiskScore
+  riskAssessment: RiskAssessment | null
   sanitizedContext: string | null
 }
 

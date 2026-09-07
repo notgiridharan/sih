@@ -6,6 +6,7 @@ import { sanitizeContext } from './context-sanitizer'
 import { crossValidate } from './cross-validator'
 import { runOCR, createSkippedResult } from './ocr'
 import { correlate } from './correlation'
+import { assessRisk } from './risk-engine'
 
 function computeRisk(result: Pick<ScanResult, 'piiMatches' | 'promptInjections' | 'hiddenContent' | 'crossValidation'>): RiskScore {
   const privacyScore = Math.min(result.piiMatches.length * 20, 100)
@@ -58,7 +59,7 @@ export function scan(target: ScanTarget): ScanResult {
   const sanitization = sanitizeContext(target.dom, piiMatches, promptInjections, hiddenContent)
   const sanitizedContext = sanitization.structuredContext
 
-  return {
+  const scanResult: ScanResult = {
     id: crypto.randomUUID(),
     url: target.url,
     timestamp: Date.now(),
@@ -69,8 +70,11 @@ export function scan(target: ScanTarget): ScanResult {
     ocrResult: null,
     correlationResult: null,
     risk,
+    riskAssessment: null,
     sanitizedContext,
   }
+  scanResult.riskAssessment = assessRisk(scanResult)
+  return scanResult
 }
 
 export async function scanWithOCR(
@@ -108,5 +112,6 @@ export async function scanWithOCR(
     }
   }
 
+  result.riskAssessment = assessRisk(result)
   return result
 }
