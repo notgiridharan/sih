@@ -6,7 +6,8 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "sidePanel"
+    "sidePanel",
+    "tabs"
   ],
   "action": {
     "default_title": "Privacy Vision Agent",

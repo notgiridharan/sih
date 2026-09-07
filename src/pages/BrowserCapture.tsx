@@ -14,7 +14,7 @@ import {
 } from '../components/ui/Icons'
 import { captureFromHTML, getMockCaptureData, getMockHTML } from '../services/capture'
 import { scan } from '../services/scanner'
-import { isExtension, captureActiveTab } from '../services/extension-bridge'
+import { isExtension, captureActiveTab, captureScreenshot } from '../services/extension-bridge'
 import type { ScanResult, CaptureData, CaptureStatus, DOMNodeInfo } from '../types/scan'
 import type { PageId } from '../types/navigation'
 
@@ -65,9 +65,15 @@ export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCapt
     setScanResult(null)
 
     if (inputMode === 'url' && isExtension()) {
-      captureActiveTab()
-        .then((tabData) => {
+      Promise.all([
+        captureActiveTab(),
+        captureScreenshot().catch(() => null),
+      ])
+        .then(([tabData, screenshotResult]) => {
           const captureData = captureFromHTML(tabData.url, tabData.dom)
+          if (screenshotResult) {
+            captureData.screenshot = screenshotResult.dataUrl
+          }
           setCapture(captureData)
           setUrl(tabData.url)
           onCaptureDOM(captureData.dom)
@@ -472,9 +478,10 @@ function TabButton({
 function ScreenshotPanel({ capture, status }: { capture: CaptureData | null; status: CaptureStatus }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const isLoading = status === 'capturing'
+  const hasRealScreenshot = capture?.screenshot != null
 
   useEffect(() => {
-    if (capture && iframeRef.current) {
+    if (capture && !hasRealScreenshot && iframeRef.current) {
       const doc = iframeRef.current.contentDocument
       if (doc) {
         doc.open()
@@ -482,13 +489,17 @@ function ScreenshotPanel({ capture, status }: { capture: CaptureData | null; sta
         doc.close()
       }
     }
-  }, [capture])
+  }, [capture, hasRealScreenshot])
 
   return (
     <Panel
       title="Website Screenshot"
       subtitle={capture ? capture.url : 'Waiting for capture...'}
-      action={<Badge variant={capture ? 'none' : 'default'}><ImageIcon size={12} /> {capture ? 'Rendered' : 'Pending'}</Badge>}
+      action={
+        <Badge variant={capture ? 'none' : 'default'}>
+          <ImageIcon size={12} /> {hasRealScreenshot ? 'Live Capture' : capture ? 'DOM Render' : 'Pending'}
+        </Badge>
+      }
     >
       <div style={{
         position: 'relative',
@@ -556,20 +567,45 @@ function ScreenshotPanel({ capture, status }: { capture: CaptureData | null; sta
               }}>
                 {capture.url}
               </div>
+              {hasRealScreenshot && (
+                <span style={{
+                  fontSize: 10,
+                  color: 'var(--green)',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                }}>
+                  Live
+                </span>
+              )}
             </div>
-            {/* Rendered page */}
-            <iframe
-              ref={iframeRef}
-              sandbox="allow-same-origin"
-              title="Screenshot preview"
-              style={{
-                width: '100%',
-                height: 320,
-                border: 'none',
-                display: 'block',
-                pointerEvents: 'none',
-              }}
-            />
+            {/* Real screenshot or DOM-rendered fallback */}
+            {hasRealScreenshot ? (
+              <img
+                src={capture.screenshot!}
+                alt="Captured screenshot of the active tab"
+                style={{
+                  width: '100%',
+                  height: 'auto',
+                  maxHeight: 480,
+                  objectFit: 'contain',
+                  display: 'block',
+                }}
+              />
+            ) : (
+              <iframe
+                ref={iframeRef}
+                sandbox="allow-same-origin"
+                title="Screenshot preview"
+                style={{
+                  width: '100%',
+                  height: 320,
+                  border: 'none',
+                  display: 'block',
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
             {/* Scan line overlay during analyzing */}
             {status === 'analyzing' && (
               <div style={{
