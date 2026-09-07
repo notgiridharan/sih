@@ -56,11 +56,38 @@ export interface HiddenContent {
 
 export type RiskLevel = 'none' | 'low' | 'medium' | 'high' | 'critical'
 
+export type AnomalyType =
+  | 'HIDDEN_AGENT_INSTRUCTION'
+  | 'INVISIBLE_PROMPT_INJECTION'
+  | 'OFFSCREEN_SUSPICIOUS_CONTENT'
+  | 'DOM_VISIBILITY_MISMATCH'
+  | 'HIDDEN_INTERACTIVE_ELEMENT'
+  | 'CLOAKED_CONTENT'
+
+export interface CrossValidationAnomaly {
+  type: AnomalyType
+  severity: RiskLevel
+  selector: string
+  content: string
+  technique: HiddenContent['technique'] | null
+  reason: string
+}
+
+export interface CrossValidationResult {
+  anomalies: CrossValidationAnomaly[]
+  hiddenInjectionCount: number
+  invisibleContentCount: number
+  domVisibilityMismatches: { selector: string; reason: string }[]
+  severity: RiskLevel
+  hasScreenshot: boolean
+}
+
 export interface RiskScore {
   overall: RiskLevel
   privacy: number
   injection: number
   hidden: number
+  visualAnomaly: number
 }
 
 export interface ScanResult {
@@ -70,6 +97,7 @@ export interface ScanResult {
   piiMatches: PIIMatch[]
   promptInjections: PromptInjection[]
   hiddenContent: HiddenContent[]
+  crossValidation: CrossValidationResult | null
   risk: RiskScore
   sanitizedContext: string | null
 }

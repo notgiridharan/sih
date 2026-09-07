@@ -3,10 +3,10 @@ import { Panel } from '../components/ui/Panel'
 import { Badge } from '../components/ui/Badge'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
-import { EyeIcon, CodeIcon, ShieldIcon, AlertIcon } from '../components/ui/Icons'
+import { EyeIcon, CodeIcon, ShieldIcon, AlertIcon, CheckCircleIcon } from '../components/ui/Icons'
 import { analyzeDOM } from '../services/dom-analyzer'
 import { getMockHTML } from '../services/capture'
-import type { ScanResult, AnalyzedElement, DOMAnalysis, ElementCategory } from '../types/scan'
+import type { ScanResult, AnalyzedElement, DOMAnalysis, ElementCategory, RiskLevel } from '../types/scan'
 
 interface VisualAnalysisProps {
   scanResults: ScanResult[]
@@ -152,6 +152,9 @@ export function VisualAnalysis({ scanResults, capturedDOM }: VisualAnalysisProps
 
       {/* Suspicious elements */}
       <SuspiciousElementsList elements={analysis.flatElements} onSelect={setSelectedElement} />
+
+      {/* Cross-Validation Results */}
+      <CrossValidationPanel scanResults={scanResults} />
 
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -619,5 +622,215 @@ function SuspiciousElementsList({
         })}
       </div>
     </Panel>
+  )
+}
+
+/* ─── Cross-Validation Panel ─────────────────────────────────── */
+
+const SEVERITY_COLOR: Record<RiskLevel, string> = {
+  none: 'var(--text-muted)',
+  low: 'var(--green)',
+  medium: 'var(--yellow)',
+  high: 'var(--orange)',
+  critical: 'var(--red)',
+}
+
+const ANOMALY_TYPE_LABELS: Record<string, string> = {
+  HIDDEN_AGENT_INSTRUCTION: 'Hidden Agent Instruction',
+  INVISIBLE_PROMPT_INJECTION: 'Invisible Prompt Injection',
+  OFFSCREEN_SUSPICIOUS_CONTENT: 'Off-screen Suspicious Content',
+  DOM_VISIBILITY_MISMATCH: 'DOM Visibility Mismatch',
+  HIDDEN_INTERACTIVE_ELEMENT: 'Hidden Interactive Element',
+  CLOAKED_CONTENT: 'Cloaked Content',
+}
+
+function CrossValidationPanel({ scanResults }: { scanResults: ScanResult[] }) {
+  const latestCV = scanResults.length > 0 ? scanResults[0].crossValidation : null
+  const latestRisk = scanResults.length > 0 ? scanResults[0].risk : null
+
+  return (
+    <Panel
+      title="DOM / Visual Cross-Validation"
+      subtitle="Correlates DOM analysis with visual state to detect hidden threats"
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Status indicators */}
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <StatusChip
+            label="DOM captured"
+            active={scanResults.length > 0}
+          />
+          <StatusChip
+            label="Screenshot captured"
+            active={latestCV?.hasScreenshot ?? false}
+          />
+          <StatusChip
+            label="Cross-validation run"
+            active={latestCV != null}
+          />
+        </div>
+
+        {/* Risk scores */}
+        {latestRisk && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+            gap: 8,
+          }}>
+            <RiskBar label="Privacy Risk" score={latestRisk.privacy} />
+            <RiskBar label="Injection Risk" score={latestRisk.injection} />
+            <RiskBar label="Hidden Content Risk" score={latestRisk.hidden} />
+            <RiskBar label="Visual/DOM Anomaly Risk" score={latestRisk.visualAnomaly} />
+            <div style={{
+              gridColumn: '1 / -1',
+              padding: '8px 14px',
+              background: `color-mix(in srgb, ${SEVERITY_COLOR[latestRisk.overall]} 10%, var(--bg-input))`,
+              border: `1px solid ${SEVERITY_COLOR[latestRisk.overall]}`,
+              borderRadius: 'var(--radius)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>Overall Risk</span>
+              <Badge variant={latestRisk.overall}>{latestRisk.overall.toUpperCase()}</Badge>
+            </div>
+          </div>
+        )}
+
+        {/* Anomalies */}
+        {latestCV && latestCV.anomalies.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+              Detected Anomalies ({latestCV.anomalies.length})
+            </span>
+            {latestCV.anomalies.map((anomaly, i) => (
+              <div key={i} style={{
+                padding: '10px 14px',
+                background: 'var(--bg-input)',
+                borderRadius: 'var(--radius)',
+                borderLeft: `3px solid ${SEVERITY_COLOR[anomaly.severity]}`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Badge variant={anomaly.severity}>{anomaly.severity}</Badge>
+                  <span style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: SEVERITY_COLOR[anomaly.severity],
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.03em',
+                  }}>
+                    {ANOMALY_TYPE_LABELS[anomaly.type] || anomaly.type}
+                  </span>
+                  {anomaly.technique && (
+                    <code style={{
+                      fontSize: 10,
+                      padding: '1px 6px',
+                      borderRadius: 3,
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-muted)',
+                      fontFamily: 'var(--mono)',
+                    }}>
+                      {anomaly.technique}
+                    </code>
+                  )}
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                  {anomaly.reason}
+                </p>
+                <code style={{
+                  fontSize: 11,
+                  fontFamily: 'var(--mono)',
+                  color: 'var(--text-muted)',
+                  padding: '4px 8px',
+                  background: 'var(--bg-card)',
+                  borderRadius: 'var(--radius)',
+                  wordBreak: 'break-all',
+                  maxHeight: 60,
+                  overflow: 'auto',
+                }}>
+                  {anomaly.content.slice(0, 200)}{anomaly.content.length > 200 ? '...' : ''}
+                </code>
+              </div>
+            ))}
+          </div>
+        ) : latestCV ? (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '12px 16px',
+            background: 'color-mix(in srgb, var(--green) 8%, var(--bg-input))',
+            borderRadius: 'var(--radius)',
+            border: '1px solid color-mix(in srgb, var(--green) 25%, var(--border))',
+          }}>
+            <CheckCircleIcon size={16} />
+            <span style={{ fontSize: 13, color: 'var(--green)' }}>No DOM/visual anomalies detected</span>
+          </div>
+        ) : (
+          <div style={{
+            padding: '20px 16px',
+            textAlign: 'center',
+            color: 'var(--text-muted)',
+            fontSize: 13,
+          }}>
+            Run a scan from Browser Capture to see cross-validation results
+          </div>
+        )}
+      </div>
+    </Panel>
+  )
+}
+
+function StatusChip({ label, active }: { label: string; active: boolean }) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: '4px 10px',
+      borderRadius: 'var(--radius)',
+      background: active
+        ? 'color-mix(in srgb, var(--green) 10%, var(--bg-input))'
+        : 'var(--bg-input)',
+      border: `1px solid ${active ? 'color-mix(in srgb, var(--green) 30%, var(--border))' : 'var(--border)'}`,
+      fontSize: 12,
+      color: active ? 'var(--green)' : 'var(--text-muted)',
+    }}>
+      <span style={{ fontSize: 14 }}>{active ? '✓' : '–'}</span>
+      {label}
+    </div>
+  )
+}
+
+function RiskBar({ label, score }: { label: string; score: number }) {
+  const color = score >= 80 ? 'var(--red)' : score >= 60 ? 'var(--orange)' : score >= 30 ? 'var(--yellow)' : 'var(--green)'
+  return (
+    <div style={{
+      padding: '8px 12px',
+      background: 'var(--bg-input)',
+      borderRadius: 'var(--radius)',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>{label}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color, fontVariantNumeric: 'tabular-nums' }}>{score}</span>
+      </div>
+      <div style={{
+        height: 3,
+        borderRadius: 2,
+        background: 'var(--border)',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          width: `${Math.min(score, 100)}%`,
+          height: '100%',
+          background: color,
+          borderRadius: 2,
+          transition: 'width 0.3s ease',
+        }} />
+      </div>
+    </div>
   )
 }

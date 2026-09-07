@@ -11,6 +11,7 @@ import {
   CheckCircleIcon,
   ActivityIcon,
   AlertIcon,
+  EyeIcon,
 } from '../components/ui/Icons'
 import { captureFromHTML, getMockCaptureData, getMockHTML } from '../services/capture'
 import { scan } from '../services/scanner'
@@ -934,7 +935,7 @@ function AnalysisSummary({ result }: { result: ScanResult }) {
           <CheckCircleIcon size={18} />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
           <SummaryCard
             icon={<AlertIcon size={18} />}
             label="PII Matches"
@@ -955,6 +956,13 @@ function AnalysisSummary({ result }: { result: ScanResult }) {
             count={result.hiddenContent.length}
             score={result.risk.hidden}
             color="var(--yellow)"
+          />
+          <SummaryCard
+            icon={<EyeIcon size={18} />}
+            label="DOM/Visual Anomaly"
+            count={result.crossValidation?.anomalies.length ?? 0}
+            score={result.risk.visualAnomaly}
+            color="var(--cyan)"
           />
         </div>
       </div>

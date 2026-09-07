@@ -3,8 +3,9 @@ import { detectPII } from './pii-detector'
 import { detectPromptInjections } from './injection-detector'
 import { detectHiddenContent } from './hidden-content-detector'
 import { sanitizeContext } from './context-sanitizer'
+import { crossValidate } from './cross-validator'
 
-function computeRisk(result: Pick<ScanResult, 'piiMatches' | 'promptInjections' | 'hiddenContent'>): RiskScore {
+function computeRisk(result: Pick<ScanResult, 'piiMatches' | 'promptInjections' | 'hiddenContent' | 'crossValidation'>): RiskScore {
   const privacyScore = Math.min(result.piiMatches.length * 20, 100)
   const injectionScore = result.promptInjections.reduce((sum, inj) => {
     const weights = { low: 10, medium: 25, high: 50, critical: 80 }
@@ -12,7 +13,17 @@ function computeRisk(result: Pick<ScanResult, 'piiMatches' | 'promptInjections' 
   }, 0)
   const hiddenScore = Math.min(result.hiddenContent.length * 15, 100)
 
-  const max = Math.max(privacyScore, injectionScore, hiddenScore)
+  let visualAnomalyScore = 0
+  if (result.crossValidation) {
+    const cv = result.crossValidation
+    for (const anomaly of cv.anomalies) {
+      const weights: Record<RiskLevel, number> = { none: 0, low: 5, medium: 15, high: 35, critical: 60 }
+      visualAnomalyScore += weights[anomaly.severity]
+    }
+    visualAnomalyScore = Math.min(visualAnomalyScore, 100)
+  }
+
+  const max = Math.max(privacyScore, injectionScore, hiddenScore, visualAnomalyScore)
   let overall: RiskLevel = 'none'
   if (max > 0) overall = 'low'
   if (max >= 30) overall = 'medium'
@@ -24,6 +35,7 @@ function computeRisk(result: Pick<ScanResult, 'piiMatches' | 'promptInjections' 
     privacy: Math.min(privacyScore, 100),
     injection: Math.min(injectionScore, 100),
     hidden: Math.min(hiddenScore, 100),
+    visualAnomaly: visualAnomalyScore,
   }
 }
 
@@ -32,7 +44,14 @@ export function scan(target: ScanTarget): ScanResult {
   const promptInjections = detectPromptInjections(target.dom)
   const hiddenContent = detectHiddenContent(target.dom)
 
-  const risk = computeRisk({ piiMatches, promptInjections, hiddenContent })
+  const crossValidation = crossValidate(
+    target.dom,
+    target.screenshot,
+    hiddenContent,
+    promptInjections,
+  )
+
+  const risk = computeRisk({ piiMatches, promptInjections, hiddenContent, crossValidation })
 
   const sanitization = sanitizeContext(target.dom, piiMatches, promptInjections, hiddenContent)
   const sanitizedContext = sanitization.structuredContext
@@ -44,6 +63,7 @@ export function scan(target: ScanTarget): ScanResult {
     piiMatches,
     promptInjections,
     hiddenContent,
+    crossValidation,
     risk,
     sanitizedContext,
   }

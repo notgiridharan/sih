@@ -16,6 +16,7 @@ export function ScanResults({ result }: { result: ScanResult }) {
         <ScoreCard label="Privacy Risk" score={result.risk.privacy} count={result.piiMatches.length} unit="PII matches" />
         <ScoreCard label="Injection Risk" score={result.risk.injection} count={result.promptInjections.length} unit="injections" />
         <ScoreCard label="Hidden Content" score={result.risk.hidden} count={result.hiddenContent.length} unit="elements" />
+        <ScoreCard label="DOM/Visual Anomaly" score={result.risk.visualAnomaly} count={result.crossValidation?.anomalies.length ?? 0} unit="anomalies" />
       </div>
 
       {result.piiMatches.length > 0 && (
