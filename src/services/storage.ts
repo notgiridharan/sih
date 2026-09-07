@@ -6,6 +6,8 @@ const SENTINEL_STORAGE_VERSION = 1
 const MAX_SCANS = 100
 const MAX_OCR_TEXT_LENGTH = 10_000
 const MAX_EVIDENCE_DETAIL_LENGTH = 2_000
+const MAX_SCAN_SIZE_BYTES = 50_000
+const STORAGE_WARNING_THRESHOLD = 4_000_000
 
 export { MAX_SCANS, SENTINEL_STORAGE_VERSION }
 
@@ -16,16 +18,26 @@ export interface StoredScan {
 
 function getStorage(): Storage | null {
   try {
+    localStorage.setItem('__sentinel_test', '1')
+    localStorage.removeItem('__sentinel_test')
     return localStorage
   } catch {
     return null
   }
 }
 
+function estimateSize(obj: unknown): number {
+  try {
+    return JSON.stringify(obj).length * 2
+  } catch {
+    return 0
+  }
+}
+
 function trimOCRResult(result: ScanResult): ScanResult {
   if (!result.ocrResult) return result
   const ocr = result.ocrResult
-  if (ocr.text.length <= MAX_OCR_TEXT_LENGTH) return result
+  if (ocr.text.length <= MAX_OCR_TEXT_LENGTH && ocr.blocks.length <= 50) return result
   return {
     ...result,
     ocrResult: {
@@ -56,7 +68,45 @@ function prepareScan(result: ScanResult): ScanResult {
   let prepared = trimOCRResult(result)
   prepared = trimEvidence(prepared)
   const { sanitizedContext: _sc, ...rest } = prepared
-  return { ...rest, sanitizedContext: null }
+  prepared = { ...rest, sanitizedContext: null }
+
+  let size = estimateSize(prepared)
+  if (size > MAX_SCAN_SIZE_BYTES && prepared.ocrResult) {
+    prepared = {
+      ...prepared,
+      ocrResult: {
+        ...prepared.ocrResult,
+        text: prepared.ocrResult.text.slice(0, 2000),
+        blocks: prepared.ocrResult.blocks.slice(0, 10),
+      },
+    }
+    size = estimateSize(prepared)
+  }
+  if (size > MAX_SCAN_SIZE_BYTES && prepared.correlationResult) {
+    prepared = {
+      ...prepared,
+      correlationResult: {
+        ...prepared.correlationResult,
+        findings: prepared.correlationResult.findings.slice(0, 5),
+      },
+    }
+  }
+
+  return prepared
+}
+
+function isValidStoredScan(item: unknown): item is StoredScan {
+  if (typeof item !== 'object' || item === null) return false
+  const obj = item as Record<string, unknown>
+  if (typeof obj.version !== 'number') return false
+  if (typeof obj.data !== 'object' || obj.data === null) return false
+  const data = obj.data as Record<string, unknown>
+  return typeof data.id === 'string' && typeof data.url === 'string'
+}
+
+function migrateScans(scans: StoredScan[], fromVersion: number): StoredScan[] {
+  if (fromVersion >= SENTINEL_STORAGE_VERSION) return scans
+  return scans
 }
 
 function readAll(storage: Storage): StoredScan[] {
@@ -65,10 +115,14 @@ function readAll(storage: Storage): StoredScan[] {
     if (!raw) return []
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    return parsed.filter(
-      (item: unknown): item is StoredScan =>
-        typeof item === 'object' && item !== null && 'version' in item && 'data' in item
-    )
+    const valid = parsed.filter(isValidStoredScan)
+
+    const versionRaw = storage.getItem(VERSION_KEY)
+    const storedVersion = versionRaw ? parseInt(versionRaw, 10) : 1
+    if (storedVersion < SENTINEL_STORAGE_VERSION) {
+      return migrateScans(valid, storedVersion)
+    }
+    return valid
   } catch {
     return []
   }
@@ -77,6 +131,18 @@ function readAll(storage: Storage): StoredScan[] {
 function writeAll(storage: Storage, scans: StoredScan[]): void {
   storage.setItem(STORAGE_KEY, JSON.stringify(scans))
   storage.setItem(VERSION_KEY, String(SENTINEL_STORAGE_VERSION))
+}
+
+export function getStorageUsage(): { used: number; warning: boolean } {
+  const storage = getStorage()
+  if (!storage) return { used: 0, warning: false }
+  try {
+    const raw = storage.getItem(STORAGE_KEY)
+    const used = raw ? raw.length * 2 : 0
+    return { used, warning: used > STORAGE_WARNING_THRESHOLD }
+  } catch {
+    return { used: 0, warning: false }
+  }
 }
 
 export function saveScan(result: ScanResult): { success: boolean; error?: string } {
@@ -101,6 +167,17 @@ export function saveScan(result: ScanResult): { success: boolean; error?: string
     writeAll(storage, scans)
     return { success: true }
   } catch (err) {
+    if (err instanceof Error && (err.name === 'QuotaExceededError' || err.message.includes('QuotaExceeded'))) {
+      try {
+        const scans = readAll(storage)
+        const trimmedCount = Math.max(Math.floor(scans.length * 0.2), 5)
+        scans.length = Math.max(scans.length - trimmedCount, 0)
+        writeAll(storage, scans)
+        return saveScan(result)
+      } catch {
+        // fall through
+      }
+    }
     return { success: false, error: err instanceof Error ? err.message : 'Storage write failed' }
   }
 }

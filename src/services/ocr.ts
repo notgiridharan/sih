@@ -4,6 +4,16 @@ let workerInstance: import('tesseract.js').Worker | null = null
 let workerPromise: Promise<import('tesseract.js').Worker> | null = null
 let lastScreenshotHash: string | null = null
 let cachedResult: OCRResult | null = null
+let idleTimer: ReturnType<typeof setTimeout> | null = null
+let activeRecognition: AbortController | null = null
+
+const IDLE_TIMEOUT_MS = 60_000
+const MAX_SCREENSHOT_BYTES = 5_000_000
+
+function resetIdleTimer(): void {
+  if (idleTimer) clearTimeout(idleTimer)
+  idleTimer = setTimeout(() => { terminateOCR() }, IDLE_TIMEOUT_MS)
+}
 
 async function getWorker(): Promise<import('tesseract.js').Worker> {
   if (workerInstance) return workerInstance
@@ -30,10 +40,40 @@ function hashScreenshot(dataUrl: string): string {
   return `${hash}_${dataUrl.length}`
 }
 
-export async function runOCR(screenshotDataUrl: string): Promise<OCRResult> {
+export async function runOCR(
+  screenshotDataUrl: string,
+  signal?: AbortSignal,
+): Promise<OCRResult> {
+  if (signal?.aborted) {
+    return createAbortedResult()
+  }
+
+  if (screenshotDataUrl.length > MAX_SCREENSHOT_BYTES) {
+    return {
+      text: '',
+      confidence: 0,
+      blocks: [],
+      status: 'error',
+      error: 'Screenshot too large for OCR processing',
+      processingTimeMs: 0,
+    }
+  }
+
   const hash = hashScreenshot(screenshotDataUrl)
   if (hash === lastScreenshotHash && cachedResult) {
     return cachedResult
+  }
+
+  if (activeRecognition) {
+    activeRecognition.abort()
+    activeRecognition = null
+  }
+
+  const controller = new AbortController()
+  activeRecognition = controller
+
+  if (signal) {
+    signal.addEventListener('abort', () => controller.abort(), { once: true })
   }
 
   const start = performance.now()
@@ -41,7 +81,15 @@ export async function runOCR(screenshotDataUrl: string): Promise<OCRResult> {
   try {
     const worker = await getWorker()
 
+    if (controller.signal.aborted) {
+      return createAbortedResult()
+    }
+
     const { data } = await worker.recognize(screenshotDataUrl)
+
+    if (controller.signal.aborted) {
+      return createAbortedResult()
+    }
 
     const blocks: OCRBlock[] = []
     if (data.blocks) {
@@ -76,8 +124,12 @@ export async function runOCR(screenshotDataUrl: string): Promise<OCRResult> {
 
     lastScreenshotHash = hash
     cachedResult = result
+    resetIdleTimer()
     return result
   } catch (err) {
+    if (controller.signal.aborted) {
+      return createAbortedResult()
+    }
     return {
       text: '',
       confidence: 0,
@@ -86,10 +138,22 @@ export async function runOCR(screenshotDataUrl: string): Promise<OCRResult> {
       error: err instanceof Error ? err.message : 'OCR processing failed',
       processingTimeMs: Math.round(performance.now() - start),
     }
+  } finally {
+    if (activeRecognition === controller) {
+      activeRecognition = null
+    }
   }
 }
 
 export async function terminateOCR(): Promise<void> {
+  if (idleTimer) {
+    clearTimeout(idleTimer)
+    idleTimer = null
+  }
+  if (activeRecognition) {
+    activeRecognition.abort()
+    activeRecognition = null
+  }
   if (workerInstance) {
     await workerInstance.terminate()
     workerInstance = null
@@ -100,6 +164,16 @@ export async function terminateOCR(): Promise<void> {
 }
 
 export function createSkippedResult(): OCRResult {
+  return {
+    text: '',
+    confidence: 0,
+    blocks: [],
+    status: 'skipped',
+    processingTimeMs: 0,
+  }
+}
+
+function createAbortedResult(): OCRResult {
   return {
     text: '',
     confidence: 0,

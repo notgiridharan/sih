@@ -127,10 +127,11 @@ export function ScanHistoryPage({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* Search */}
         <input
-          type="text"
+          type="search"
           placeholder="Search scans by URL or hostname..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          aria-label="Search scans by URL or hostname"
           style={{
             padding: '8px 12px',
             borderRadius: 'var(--radius)',
@@ -242,6 +243,9 @@ export function ScanHistoryPage({
               return (
                 <div
                   key={scan.id}
+                  role="button"
+                  tabIndex={isDemo ? -1 : 0}
+                  aria-label={`View scan for ${host}, risk ${level}, score ${score}`}
                   style={{
                     display: 'grid',
                     gridTemplateColumns: '1fr 90px 70px 60px 80px 50px',
@@ -253,6 +257,7 @@ export function ScanHistoryPage({
                     transition: 'background 0.1s',
                   }}
                   onClick={() => !isDemo && onViewScan(scan)}
+                  onKeyDown={(e) => { if (!isDemo && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onViewScan(scan) } }}
                   onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-card-hover)'}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; if (isDeleting) setDeletingId(null) }}
                 >
@@ -324,6 +329,7 @@ export function ScanHistoryPage({
                       ) : (
                         <button
                           onClick={() => handleDelete(scan.id)}
+                          aria-label={`Delete scan for ${host}`}
                           style={{
                             padding: '2px 6px',
                             borderRadius: 'var(--radius-sm)',

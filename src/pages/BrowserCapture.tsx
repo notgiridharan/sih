@@ -14,7 +14,7 @@ import {
   EyeIcon,
 } from '../components/ui/Icons'
 import { captureFromHTML, getMockCaptureData, getMockHTML } from '../services/capture'
-import { scanWithOCR } from '../services/scanner'
+import { scanWithOCR, cancelActiveScan } from '../services/scanner'
 import { isExtension, captureActiveTab, captureScreenshot } from '../services/extension-bridge'
 import type { ScanResult, CaptureData, CaptureStatus, DOMNodeInfo } from '../types/scan'
 import type { PageId } from '../types/navigation'
@@ -54,6 +54,16 @@ export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCapt
   const [capture, setCapture] = useState<CaptureData | null>(null)
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [inputMode, setInputMode] = useState<'url' | 'paste'>('url')
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const scanGenRef = useRef(0)
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort()
+      cancelActiveScan()
+    }
+  }, [])
 
   const handleCapture = useCallback(() => {
     const content = inputMode === 'paste' ? html.trim() : ''
@@ -62,8 +72,12 @@ export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCapt
     if (inputMode === 'url' && !url.trim() && !isExtension()) return
     if (inputMode === 'paste' && !content) return
 
+    abortRef.current?.abort()
+    cancelActiveScan()
+
     setStatus('capturing')
     setScanResult(null)
+    setErrorMsg(null)
 
     if (inputMode === 'url' && isExtension()) {
       Promise.all([
@@ -80,37 +94,61 @@ export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCapt
           onCaptureDOM(captureData.dom)
           setStatus('captured')
         })
-        .catch(() => {
-          const captureData = getMockCaptureData()
-          setCapture(captureData)
-          onCaptureDOM(captureData.dom)
-          setStatus('captured')
+        .catch((err) => {
+          if (!isExtension()) {
+            const captureData = getMockCaptureData()
+            setCapture(captureData)
+            onCaptureDOM(captureData.dom)
+            setStatus('captured')
+          } else {
+            setErrorMsg(err instanceof Error ? err.message : 'Capture failed. Check tab permissions.')
+            setStatus('error')
+          }
         })
     } else {
       setTimeout(() => {
-        const captureData = inputMode === 'url'
-          ? getMockCaptureData()
-          : captureFromHTML(targetUrl, content)
+        try {
+          const captureData = inputMode === 'url'
+            ? getMockCaptureData()
+            : captureFromHTML(targetUrl, content)
 
-        setCapture(captureData)
-        onCaptureDOM(captureData.dom)
-        setStatus('captured')
+          setCapture(captureData)
+          onCaptureDOM(captureData.dom)
+          setStatus('captured')
+        } catch (err) {
+          setErrorMsg(err instanceof Error ? err.message : 'Failed to parse HTML content.')
+          setStatus('error')
+        }
       }, 1200)
     }
   }, [url, html, inputMode, onCaptureDOM])
 
   const handleAnalyze = useCallback(() => {
     if (!capture) return
-    setStatus('analyzing')
 
-    scanWithOCR({
-      url: capture.url,
-      dom: capture.dom,
-      screenshot: capture.screenshot,
-    }).then((result) => {
+    abortRef.current?.abort()
+    cancelActiveScan()
+
+    const controller = new AbortController()
+    abortRef.current = controller
+    const gen = ++scanGenRef.current
+
+    setStatus('analyzing')
+    setErrorMsg(null)
+
+    scanWithOCR(
+      { url: capture.url, dom: capture.dom, screenshot: capture.screenshot },
+      undefined,
+      controller.signal,
+    ).then((result) => {
+      if (scanGenRef.current !== gen || controller.signal.aborted) return
       setScanResult(result)
       onScan(result)
       setStatus('complete')
+    }).catch((err) => {
+      if (scanGenRef.current !== gen || controller.signal.aborted) return
+      setErrorMsg(err instanceof Error ? err.message : 'Analysis failed unexpectedly.')
+      setStatus('error')
     })
   }, [capture, onScan])
 
@@ -120,13 +158,16 @@ export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCapt
     setInputMode('paste')
   }, [])
 
-  function handleReset() {
+  const handleReset = useCallback(() => {
+    abortRef.current?.abort()
+    cancelActiveScan()
     setUrl('')
     setHtml('')
     setStatus('idle')
     setCapture(null)
     setScanResult(null)
-  }
+    setErrorMsg(null)
+  }, [])
 
   const isCapturing = status === 'capturing'
   const isAnalyzing = status === 'analyzing'
@@ -136,6 +177,27 @@ export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCapt
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Workflow Progress */}
       <WorkflowProgress status={status} />
+
+      {/* Error display */}
+      {errorMsg && (
+        <div role="alert" style={{
+          padding: '12px 16px',
+          background: 'var(--red-muted)',
+          border: '1px solid var(--red)',
+          borderRadius: 'var(--radius)',
+          color: 'var(--red)',
+          fontSize: 13,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}>
+          <span>{errorMsg}</span>
+          <Button variant="ghost" size="sm" onClick={handleReset} aria-label="Dismiss error and reset">
+            Try Again
+          </Button>
+        </div>
+      )}
 
       {/* Input Panel */}
       <Panel
@@ -267,6 +329,7 @@ export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCapt
                 onClick={handleCapture}
                 disabled={inputMode === 'url' ? (!url.trim() && !isExtension()) : !html.trim()}
                 icon={<CameraIcon size={14} />}
+                aria-label={inputMode === 'url' && isExtension() ? 'Capture active browser tab' : 'Capture HTML content'}
               >
                 {inputMode === 'url' && isExtension() ? 'Capture Active Tab' : 'Capture'}
               </Button>
@@ -276,6 +339,7 @@ export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCapt
                 variant="primary"
                 onClick={handleAnalyze}
                 icon={<ActivityIcon size={14} />}
+                aria-label="Run security analysis on captured content"
               >
                 Analyze Content
               </Button>

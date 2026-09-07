@@ -87,11 +87,19 @@ describe('storage service', () => {
 
   it('handles storage errors gracefully', () => {
     const originalSetItem = Storage.prototype.setItem
-    Storage.prototype.setItem = () => { throw new Error('QuotaExceededError') }
-    const result = saveScan(makeScan({ id: 'err-1' }))
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('QuotaExceededError')
-    Storage.prototype.setItem = originalSetItem
+    try {
+      let callCount = 0
+      Storage.prototype.setItem = function (...args: [string, string]) {
+        callCount++
+        if (callCount > 1) throw new Error('QuotaExceededError')
+        return originalSetItem.apply(this, args)
+      }
+      const result = saveScan(makeScan({ id: 'err-1' }))
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('QuotaExceededError')
+    } finally {
+      Storage.prototype.setItem = originalSetItem
+    }
   })
 
   it('handles corrupted data gracefully', () => {

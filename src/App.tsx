@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import type { PageId } from './types/navigation'
 import type { ScanResult } from './types/scan'
 import { Layout } from './components/layout/Layout'
@@ -71,12 +71,18 @@ export function App() {
   const [lastCapturedDOM, setLastCapturedDOM] = useState<string | null>(null)
   const [viewingScan, setViewingScan] = useState<ScanResult | null>(null)
   const [storageError, setStorageError] = useState<string | null>(null)
+  const savedScanIds = useRef(new Set<string>())
 
   useEffect(() => {
-    setStoredScans(getScans())
+    const scans = getScans()
+    setStoredScans(scans)
+    for (const s of scans) savedScanIds.current.add(s.id)
   }, [])
 
   const handleScan = useCallback((result: ScanResult) => {
+    if (savedScanIds.current.has(result.id)) return
+    savedScanIds.current.add(result.id)
+
     setScanResults((prev) => [result, ...prev])
     setViewingScan(null)
     const { success, error } = saveScan(result)

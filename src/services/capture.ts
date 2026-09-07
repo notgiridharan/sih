@@ -1,8 +1,11 @@
 import type { CaptureData, CaptureMetadata, DOMNodeInfo } from '../types/scan'
 
+const MAX_PARSE_LENGTH = 3_000_000
+
 export function parseDOMTree(html: string): { tree: DOMNodeInfo; metadata: CaptureMetadata } {
   const parser = new DOMParser()
-  const doc = parser.parseFromString(html, 'text/html')
+  const trimmedHtml = html.length > MAX_PARSE_LENGTH ? html.slice(0, MAX_PARSE_LENGTH) : html
+  const doc = parser.parseFromString(trimmedHtml, 'text/html')
 
   const metadata: CaptureMetadata = {
     title: doc.title || '(untitled)',
@@ -59,8 +62,9 @@ export function parseDOMTree(html: string): { tree: DOMNodeInfo; metadata: Captu
 
     const childElements = Array.from(el.children)
     const maxChildDepth = 4
+    const maxChildren = 30
     const children = depth < maxChildDepth
-      ? childElements.slice(0, 20).map((c) => buildNode(c, depth + 1))
+      ? childElements.slice(0, maxChildren).map((c) => buildNode(c, depth + 1))
       : []
 
     return {

@@ -9,6 +9,10 @@ import { correlate } from './correlation'
 import { assessRisk } from './risk-engine'
 import { aggregateFindings } from './findings'
 
+const MAX_DOM_LENGTH = 2_000_000
+
+let activeScanId: string | null = null
+
 function computeRisk(result: Pick<ScanResult, 'piiMatches' | 'promptInjections' | 'hiddenContent' | 'crossValidation'>): RiskScore {
   const privacyScore = Math.min(result.piiMatches.length * 20, 100)
   const injectionScore = result.promptInjections.reduce((sum, inj) => {
@@ -43,13 +47,19 @@ function computeRisk(result: Pick<ScanResult, 'piiMatches' | 'promptInjections' 
   }
 }
 
+function truncateDOM(dom: string): string {
+  if (dom.length <= MAX_DOM_LENGTH) return dom
+  return dom.slice(0, MAX_DOM_LENGTH)
+}
+
 export function scan(target: ScanTarget): ScanResult {
-  const piiMatches = detectPII(target.dom)
-  const promptInjections = detectPromptInjections(target.dom)
-  const hiddenContent = detectHiddenContent(target.dom)
+  const dom = truncateDOM(target.dom)
+  const piiMatches = detectPII(dom)
+  const promptInjections = detectPromptInjections(dom)
+  const hiddenContent = detectHiddenContent(dom)
 
   const crossValidation = crossValidate(
-    target.dom,
+    dom,
     target.screenshot,
     hiddenContent,
     promptInjections,
@@ -57,7 +67,7 @@ export function scan(target: ScanTarget): ScanResult {
 
   const risk = computeRisk({ piiMatches, promptInjections, hiddenContent, crossValidation })
 
-  const sanitization = sanitizeContext(target.dom, piiMatches, promptInjections, hiddenContent)
+  const sanitization = sanitizeContext(dom, piiMatches, promptInjections, hiddenContent)
   const sanitizedContext = sanitization.structuredContext
 
   const scanResult: ScanResult = {
@@ -83,8 +93,13 @@ export function scan(target: ScanTarget): ScanResult {
 export async function scanWithOCR(
   target: ScanTarget,
   onOCRStatus?: (status: string) => void,
+  signal?: AbortSignal,
 ): Promise<ScanResult> {
   const result = scan(target)
+  const scanId = result.id
+  activeScanId = scanId
+
+  if (signal?.aborted) return result
 
   if (!target.screenshot) {
     result.ocrResult = createSkippedResult()
@@ -94,11 +109,14 @@ export async function scanWithOCR(
   try {
     onOCRStatus?.('loading')
     onOCRStatus?.('processing')
-    const ocrResult = await runOCR(target.screenshot)
+    const ocrResult = await runOCR(target.screenshot, signal)
+
+    if (activeScanId !== scanId) return result
+
     result.ocrResult = ocrResult
 
     result.correlationResult = correlate(
-      target.dom,
+      truncateDOM(target.dom),
       ocrResult,
       result.piiMatches,
       result.promptInjections,
@@ -115,7 +133,13 @@ export async function scanWithOCR(
     }
   }
 
+  if (activeScanId !== scanId) return result
+
   result.riskAssessment = assessRisk(result)
   result.findings = aggregateFindings(result)
   return result
+}
+
+export function cancelActiveScan(): void {
+  activeScanId = null
 }
