@@ -15,6 +15,7 @@ function baseScanResult(overrides: Partial<ScanResult> = {}): ScanResult {
     correlationResult: null,
     risk: { overall: 'none', privacy: 0, injection: 0, hidden: 0, visualAnomaly: 0 },
     riskAssessment: null,
+    findings: [],
     sanitizedContext: null,
     ...overrides,
   }

@@ -166,6 +166,54 @@ export interface RiskAssessment {
   recommendation: string
 }
 
+export type EvidenceSource = 'DOM' | 'OCR' | 'CORRELATION' | 'CROSS_VALIDATION'
+
+export type EvidenceStrength = 'SINGLE_SOURCE' | 'MULTI_SOURCE' | 'CROSS_MODAL'
+
+export interface EvidenceItem {
+  source: EvidenceSource
+  label: string
+  detail: string
+  selector?: string
+  element?: string
+  attributes?: Record<string, string>
+  ocrText?: string
+  ocrConfidence?: number
+  boundingBox?: { x: number; y: number; width: number; height: number }
+  visibility?: string
+}
+
+export interface SecurityFinding {
+  id: string
+  title: string
+  category: RiskCategory
+  severity: RiskLevel
+  confidence: number
+  description: string
+  evidence: EvidenceItem[]
+  evidenceStrength: EvidenceStrength
+  recommendation: string
+}
+
+export interface SecurityReport {
+  header: string
+  scan: {
+    url: string
+    hostname: string
+    timestamp: number
+    id: string
+  }
+  risk: {
+    score: number
+    level: RiskLevel
+    confidence: number
+    categories: Record<RiskCategory, { score: number; level: RiskLevel }>
+  }
+  findings: SecurityFinding[]
+  summary: string
+  generatedAt: number
+}
+
 export interface ScanResult {
   id: string
   url: string
@@ -178,6 +226,7 @@ export interface ScanResult {
   correlationResult: CorrelationResult | null
   risk: RiskScore
   riskAssessment: RiskAssessment | null
+  findings: SecurityFinding[]
   sanitizedContext: string | null
 }
 

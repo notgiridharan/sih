@@ -7,6 +7,7 @@ import { crossValidate } from './cross-validator'
 import { runOCR, createSkippedResult } from './ocr'
 import { correlate } from './correlation'
 import { assessRisk } from './risk-engine'
+import { aggregateFindings } from './findings'
 
 function computeRisk(result: Pick<ScanResult, 'piiMatches' | 'promptInjections' | 'hiddenContent' | 'crossValidation'>): RiskScore {
   const privacyScore = Math.min(result.piiMatches.length * 20, 100)
@@ -71,9 +72,11 @@ export function scan(target: ScanTarget): ScanResult {
     correlationResult: null,
     risk,
     riskAssessment: null,
+    findings: [],
     sanitizedContext,
   }
   scanResult.riskAssessment = assessRisk(scanResult)
+  scanResult.findings = aggregateFindings(scanResult)
   return scanResult
 }
 
@@ -113,5 +116,6 @@ export async function scanWithOCR(
   }
 
   result.riskAssessment = assessRisk(result)
+  result.findings = aggregateFindings(result)
   return result
 }

@@ -6,7 +6,9 @@ import { Button } from '../components/ui/Button'
 import { EyeIcon, CodeIcon, ShieldIcon, AlertIcon, CheckCircleIcon } from '../components/ui/Icons'
 import { analyzeDOM } from '../services/dom-analyzer'
 import { getMockHTML } from '../services/capture'
-import type { ScanResult, AnalyzedElement, DOMAnalysis, ElementCategory, RiskLevel, OCRStatus, CorrelationSeverity, CorrelationFinding, RiskCategory } from '../types/scan'
+import type { ScanResult, AnalyzedElement, DOMAnalysis, ElementCategory, RiskLevel, OCRStatus, CorrelationSeverity, CorrelationFinding, RiskCategory, SecurityFinding, EvidenceItem } from '../types/scan'
+import { aggregateFindings } from '../services/findings'
+import { generateReport, downloadReport } from '../services/report'
 
 interface VisualAnalysisProps {
   scanResults: ScanResult[]
@@ -164,6 +166,9 @@ export function VisualAnalysis({ scanResults, capturedDOM }: VisualAnalysisProps
 
       {/* Unified Risk Assessment */}
       <RiskAssessmentPanel scanResults={scanResults} />
+
+      {/* Security Findings with Evidence */}
+      <SecurityFindingsPanel scanResults={scanResults} />
 
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1432,5 +1437,309 @@ function RiskAssessmentPanel({ scanResults }: { scanResults: ScanResult[] }) {
         </div>
       )}
     </Panel>
+  )
+}
+
+const SEVERITY_FILTER_ORDER: RiskLevel[] = ['critical', 'high', 'medium', 'low']
+const CATEGORY_FILTER_OPTIONS: RiskCategory[] = ['privacy', 'injection', 'deception']
+
+const EVIDENCE_STRENGTH_LABEL: Record<string, { label: string; color: string }> = {
+  SINGLE_SOURCE: { label: 'Single Source', color: 'var(--text-muted)' },
+  MULTI_SOURCE: { label: 'Multi-Source', color: 'var(--cyan)' },
+  CROSS_MODAL: { label: 'Cross-Modal', color: 'var(--accent)' },
+}
+
+const EVIDENCE_SOURCE_ICON: Record<string, string> = {
+  DOM: 'DOM',
+  OCR: 'OCR',
+  CORRELATION: 'CORR',
+  CROSS_VALIDATION: 'CV',
+}
+
+function SecurityFindingsPanel({ scanResults }: { scanResults: ScanResult[] }) {
+  const latest = scanResults[scanResults.length - 1] ?? null
+  const findings = useMemo(() => {
+    if (!latest) return []
+    return latest.findings.length > 0 ? latest.findings : aggregateFindings(latest)
+  }, [latest])
+
+  const [severityFilter, setSeverityFilter] = useState<RiskLevel | 'all'>('all')
+  const [categoryFilter, setCategoryFilter] = useState<RiskCategory | 'all'>('all')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [exported, setExported] = useState(false)
+
+  const filtered = useMemo(() => {
+    let result = findings
+    if (severityFilter !== 'all') result = result.filter(f => f.severity === severityFilter)
+    if (categoryFilter !== 'all') result = result.filter(f => f.category === categoryFilter)
+    return result
+  }, [findings, severityFilter, categoryFilter])
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0 }
+    for (const f of findings) {
+      if (f.severity in c) c[f.severity]++
+    }
+    return c
+  }, [findings])
+
+  const handleExport = () => {
+    if (!latest) return
+    const report = generateReport(latest, findings)
+    downloadReport(report)
+    setExported(true)
+    setTimeout(() => setExported(false), 2000)
+  }
+
+  return (
+    <Panel
+      title="Security Findings"
+      subtitle={`${findings.length} finding${findings.length !== 1 ? 's' : ''} detected`}
+      action={
+        latest && (
+          <Button variant="ghost" size="sm" onClick={handleExport}>
+            {exported ? 'Exported!' : 'Export Report'}
+          </Button>
+        )
+      }
+    >
+      {findings.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)' }}>
+          <CheckCircleIcon size={32} />
+          <p style={{ fontSize: 14, marginTop: 8 }}>No significant security findings detected.</p>
+          <p style={{ fontSize: 12 }}>Run a scan from Browser Capture to analyze a page.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Summary counters */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {SEVERITY_FILTER_ORDER.map(sev => (
+              <button
+                key={sev}
+                onClick={() => setSeverityFilter(severityFilter === sev ? 'all' : sev)}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  borderRadius: 12,
+                  border: severityFilter === sev ? `1px solid ${RISK_LEVEL_COLOR[sev]}` : '1px solid var(--border)',
+                  background: severityFilter === sev ? `color-mix(in srgb, ${RISK_LEVEL_COLOR[sev]} 12%, var(--bg-card))` : 'var(--bg-card)',
+                  color: counts[sev] > 0 ? RISK_LEVEL_COLOR[sev] : 'var(--text-muted)',
+                  cursor: 'pointer',
+                }}
+              >
+                {sev.charAt(0).toUpperCase() + sev.slice(1)}: {counts[sev]}
+              </button>
+            ))}
+          </div>
+
+          {/* Category filters */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => setCategoryFilter('all')}
+              style={{
+                padding: '3px 8px', fontSize: 11, borderRadius: 8,
+                border: categoryFilter === 'all' ? '1px solid var(--accent)' : '1px solid var(--border)',
+                background: categoryFilter === 'all' ? 'color-mix(in srgb, var(--accent) 12%, var(--bg-card))' : 'var(--bg-card)',
+                color: 'var(--text-secondary)', cursor: 'pointer',
+              }}
+            >All</button>
+            {CATEGORY_FILTER_OPTIONS.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(categoryFilter === cat ? 'all' : cat)}
+                style={{
+                  padding: '3px 8px', fontSize: 11, borderRadius: 8,
+                  border: categoryFilter === cat ? '1px solid var(--accent)' : '1px solid var(--border)',
+                  background: categoryFilter === cat ? 'color-mix(in srgb, var(--accent) 12%, var(--bg-card))' : 'var(--bg-card)',
+                  color: 'var(--text-secondary)', cursor: 'pointer', textTransform: 'capitalize',
+                }}
+              >{cat}</button>
+            ))}
+          </div>
+
+          {/* Finding cards */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {filtered.map(finding => (
+              <FindingCard
+                key={finding.id}
+                finding={finding}
+                expanded={expandedId === finding.id}
+                onToggle={() => setExpandedId(expandedId === finding.id ? null : finding.id)}
+              />
+            ))}
+            {filtered.length === 0 && (
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 12 }}>
+                No findings match the selected filters.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </Panel>
+  )
+}
+
+function FindingCard({ finding, expanded, onToggle }: { finding: SecurityFinding; expanded: boolean; onToggle: () => void }) {
+  const strengthInfo = EVIDENCE_STRENGTH_LABEL[finding.evidenceStrength]
+  const sources = new Set(finding.evidence.map(e => e.source))
+
+  return (
+    <div style={{
+      background: 'var(--bg-card)',
+      borderRadius: 'var(--radius)',
+      border: `1px solid ${finding.severity === 'critical' ? 'var(--red)' : 'var(--border)'}`,
+      overflow: 'hidden',
+    }}>
+      {/* Header — always visible */}
+      <button
+        onClick={onToggle}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+          padding: '10px 14px', background: 'none', border: 'none',
+          cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <span style={{
+          width: 8, height: 8, borderRadius: '50%',
+          background: RISK_LEVEL_COLOR[finding.severity], flexShrink: 0,
+        }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+            {finding.title}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+            Confidence: {(finding.confidence * 100).toFixed(0)}% · {finding.evidence.length} evidence source{finding.evidence.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+        <span style={{
+          fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4,
+          background: `color-mix(in srgb, ${RISK_LEVEL_COLOR[finding.severity]} 12%, transparent)`,
+          color: RISK_LEVEL_COLOR[finding.severity], textTransform: 'uppercase',
+        }}>
+          {finding.severity}
+        </span>
+        {/* Evidence strength badge */}
+        <span style={{
+          fontSize: 9, fontWeight: 600, padding: '2px 5px', borderRadius: 4,
+          border: `1px solid ${strengthInfo.color}`,
+          color: strengthInfo.color, textTransform: 'uppercase', letterSpacing: '0.03em',
+        }}>
+          {strengthInfo.label}
+        </span>
+        {/* Source badges */}
+        <div style={{ display: 'flex', gap: 3 }}>
+          {Array.from(sources).map(s => (
+            <span key={s} style={{
+              fontSize: 9, fontWeight: 600, padding: '1px 4px', borderRadius: 3,
+              background: 'var(--bg-input)', color: 'var(--text-muted)',
+            }}>
+              {EVIDENCE_SOURCE_ICON[s]}
+            </span>
+          ))}
+        </div>
+        <span style={{ fontSize: 14, color: 'var(--text-muted)', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+          ▾
+        </span>
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div style={{ padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+            {finding.description}
+          </p>
+
+          {/* Evidence items */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {finding.evidence.map((ev, i) => (
+              <EvidenceItemView key={i} item={ev} />
+            ))}
+          </div>
+
+          {/* Recommendation */}
+          <div style={{
+            padding: '8px 10px', fontSize: 12,
+            background: 'color-mix(in srgb, var(--accent) 6%, var(--bg-input))',
+            borderRadius: 'var(--radius)',
+            border: '1px solid var(--border)',
+            color: 'var(--text-secondary)',
+          }}>
+            <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Recommendation:
+            </span>{' '}
+            {finding.recommendation}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function EvidenceItemView({ item }: { item: EvidenceItem }) {
+  return (
+    <div style={{
+      padding: '8px 10px',
+      background: 'var(--bg-input)',
+      borderRadius: 'var(--radius)',
+      border: '1px solid var(--border)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        <span style={{
+          fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3,
+          background: item.source === 'OCR' ? 'var(--cyan)' : item.source === 'CORRELATION' ? 'var(--accent)' : item.source === 'CROSS_VALIDATION' ? 'var(--yellow)' : 'var(--orange)',
+          color: 'var(--bg-card)', textTransform: 'uppercase',
+        }}>
+          {item.source}
+        </span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>
+          {item.label}
+        </span>
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+        {item.detail}
+      </div>
+      {item.selector && (
+        <code style={{ fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--text-muted)', display: 'block', marginTop: 3 }}>
+          {item.selector}
+        </code>
+      )}
+      {item.element && (
+        <code style={{ fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--orange)', display: 'block', marginTop: 2 }}>
+          &lt;{item.element}&gt;
+        </code>
+      )}
+      {item.attributes && Object.keys(item.attributes).length > 0 && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+          {Object.entries(item.attributes).map(([k, v]) => (
+            <code key={k} style={{ fontSize: 9, fontFamily: 'var(--mono)', padding: '1px 4px', background: 'var(--bg-card)', borderRadius: 3, color: 'var(--text-muted)' }}>
+              {k}="{v}"
+            </code>
+          ))}
+        </div>
+      )}
+      {item.ocrText && (
+        <div style={{ marginTop: 4 }}>
+          <code style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--cyan)' }}>
+            "{item.ocrText}"
+          </code>
+          {item.ocrConfidence != null && (
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 8 }}>
+              OCR confidence: {(item.ocrConfidence * 100).toFixed(0)}%
+            </span>
+          )}
+        </div>
+      )}
+      {item.boundingBox && (
+        <div style={{ fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--text-muted)', marginTop: 3 }}>
+          bbox: {item.boundingBox.x},{item.boundingBox.y} {item.boundingBox.width}x{item.boundingBox.height}
+        </div>
+      )}
+      {item.visibility && (
+        <span style={{ fontSize: 10, color: 'var(--red)', display: 'block', marginTop: 3 }}>
+          visibility: {item.visibility}
+        </span>
+      )}
+    </div>
   )
 }
