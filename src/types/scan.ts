@@ -82,6 +82,23 @@ export interface CrossValidationResult {
   hasScreenshot: boolean
 }
 
+export interface OCRBlock {
+  text: string
+  confidence: number
+  boundingBox: { x: number; y: number; width: number; height: number }
+}
+
+export type OCRStatus = 'idle' | 'loading' | 'processing' | 'complete' | 'error' | 'skipped'
+
+export interface OCRResult {
+  text: string
+  confidence: number
+  blocks: OCRBlock[]
+  status: OCRStatus
+  error?: string
+  processingTimeMs: number
+}
+
 export interface RiskScore {
   overall: RiskLevel
   privacy: number
@@ -98,6 +115,7 @@ export interface ScanResult {
   promptInjections: PromptInjection[]
   hiddenContent: HiddenContent[]
   crossValidation: CrossValidationResult | null
+  ocrResult: OCRResult | null
   risk: RiskScore
   sanitizedContext: string | null
 }

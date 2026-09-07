@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button'
 import { EyeIcon, CodeIcon, ShieldIcon, AlertIcon, CheckCircleIcon } from '../components/ui/Icons'
 import { analyzeDOM } from '../services/dom-analyzer'
 import { getMockHTML } from '../services/capture'
-import type { ScanResult, AnalyzedElement, DOMAnalysis, ElementCategory, RiskLevel } from '../types/scan'
+import type { ScanResult, AnalyzedElement, DOMAnalysis, ElementCategory, RiskLevel, OCRStatus } from '../types/scan'
 
 interface VisualAnalysisProps {
   scanResults: ScanResult[]
@@ -155,6 +155,9 @@ export function VisualAnalysis({ scanResults, capturedDOM }: VisualAnalysisProps
 
       {/* Cross-Validation Results */}
       <CrossValidationPanel scanResults={scanResults} />
+
+      {/* Local Visual Analysis (OCR) */}
+      <OCRResultsPanel scanResults={scanResults} />
 
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -832,5 +835,222 @@ function RiskBar({ label, score }: { label: string; score: number }) {
         }} />
       </div>
     </div>
+  )
+}
+
+/* ─── OCR Results Panel ──────────────────────────────────────── */
+
+const OCR_STATUS_CONFIG: Record<OCRStatus, { label: string; color: string }> = {
+  idle: { label: 'Idle', color: 'var(--text-muted)' },
+  loading: { label: 'Loading OCR Engine', color: 'var(--accent)' },
+  processing: { label: 'Processing', color: 'var(--orange)' },
+  complete: { label: 'Complete', color: 'var(--green)' },
+  error: { label: 'Error', color: 'var(--red)' },
+  skipped: { label: 'Skipped', color: 'var(--text-muted)' },
+}
+
+function OCRResultsPanel({ scanResults }: { scanResults: ScanResult[] }) {
+  const ocr = scanResults.length > 0 ? scanResults[0].ocrResult : null
+  const [showAllBlocks, setShowAllBlocks] = useState(false)
+
+  const statusConfig = ocr ? OCR_STATUS_CONFIG[ocr.status] : OCR_STATUS_CONFIG.idle
+
+  return (
+    <Panel
+      title="Local Visual Analysis"
+      subtitle="OCR text extraction from screenshot — processed entirely in-browser"
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Status row */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <StatusChip label="OCR Engine" active={ocr?.status === 'complete'} />
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 12,
+            color: statusConfig.color,
+            fontWeight: 500,
+          }}>
+            <span style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: statusConfig.color,
+              display: 'inline-block',
+            }} />
+            {statusConfig.label}
+          </div>
+          {ocr?.processingTimeMs != null && ocr.processingTimeMs > 0 && (
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {ocr.processingTimeMs}ms
+            </span>
+          )}
+        </div>
+
+        {ocr?.status === 'complete' && ocr.blocks.length > 0 ? (
+          <>
+            {/* Stats */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
+              <div style={{ padding: '8px 12px', background: 'var(--bg-input)', borderRadius: 'var(--radius)' }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 2 }}>
+                  Text Blocks
+                </span>
+                <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                  {ocr.blocks.length}
+                </span>
+              </div>
+              <div style={{ padding: '8px 12px', background: 'var(--bg-input)', borderRadius: 'var(--radius)' }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 2 }}>
+                  Confidence
+                </span>
+                <span style={{
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: ocr.confidence >= 0.8 ? 'var(--green)' : ocr.confidence >= 0.5 ? 'var(--yellow)' : 'var(--red)',
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                  {(ocr.confidence * 100).toFixed(0)}%
+                </span>
+              </div>
+              <div style={{ padding: '8px 12px', background: 'var(--bg-input)', borderRadius: 'var(--radius)' }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 2 }}>
+                  Characters
+                </span>
+                <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                  {ocr.text.length}
+                </span>
+              </div>
+            </div>
+
+            {/* Extracted text */}
+            <div>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: 6 }}>
+                Extracted Text
+              </span>
+              <pre style={{
+                fontFamily: 'var(--mono)',
+                fontSize: 11,
+                color: 'var(--text-secondary)',
+                background: 'var(--bg-input)',
+                padding: '10px 12px',
+                borderRadius: 'var(--radius)',
+                margin: 0,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                maxHeight: 200,
+                overflow: 'auto',
+                border: '1px solid var(--border)',
+              }}>
+                {ocr.text || '(no text extracted)'}
+              </pre>
+            </div>
+
+            {/* Blocks with bounding boxes */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Detected Blocks ({ocr.blocks.length})
+                </span>
+                {ocr.blocks.length > 10 && (
+                  <Button variant="ghost" size="sm" onClick={() => setShowAllBlocks(!showAllBlocks)}>
+                    {showAllBlocks ? 'Show Less' : `Show All (${ocr.blocks.length})`}
+                  </Button>
+                )}
+              </div>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+                maxHeight: showAllBlocks ? 'none' : 300,
+                overflow: showAllBlocks ? 'visible' : 'auto',
+              }}>
+                {(showAllBlocks ? ocr.blocks : ocr.blocks.slice(0, 20)).map((block, i) => (
+                  <div key={i} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '4px 10px',
+                    background: 'var(--bg-input)',
+                    borderRadius: 'var(--radius)',
+                    fontSize: 12,
+                  }}>
+                    <code style={{
+                      fontFamily: 'var(--mono)',
+                      color: 'var(--text-primary)',
+                      flex: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {block.text}
+                    </code>
+                    <span style={{
+                      fontSize: 10,
+                      color: block.confidence >= 0.8 ? 'var(--green)' : block.confidence >= 0.5 ? 'var(--yellow)' : 'var(--red)',
+                      fontWeight: 600,
+                      fontVariantNumeric: 'tabular-nums',
+                      flexShrink: 0,
+                    }}>
+                      {(block.confidence * 100).toFixed(0)}%
+                    </span>
+                    <span style={{
+                      fontSize: 9,
+                      color: 'var(--text-muted)',
+                      fontFamily: 'var(--mono)',
+                      flexShrink: 0,
+                    }}>
+                      {block.boundingBox.x},{block.boundingBox.y} {block.boundingBox.width}x{block.boundingBox.height}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : ocr?.status === 'complete' ? (
+          <div style={{
+            padding: '12px 16px',
+            background: 'var(--bg-input)',
+            borderRadius: 'var(--radius)',
+            fontSize: 13,
+            color: 'var(--text-muted)',
+            textAlign: 'center',
+          }}>
+            No text detected in screenshot
+          </div>
+        ) : ocr?.status === 'error' ? (
+          <div style={{
+            padding: '10px 14px',
+            background: 'color-mix(in srgb, var(--red) 8%, var(--bg-input))',
+            border: '1px solid color-mix(in srgb, var(--red) 25%, var(--border))',
+            borderRadius: 'var(--radius)',
+            fontSize: 12,
+            color: 'var(--red)',
+          }}>
+            OCR failed: {ocr.error || 'Unknown error'}. DOM-based analysis was not affected.
+          </div>
+        ) : ocr?.status === 'skipped' ? (
+          <div style={{
+            padding: '12px 16px',
+            background: 'var(--bg-input)',
+            borderRadius: 'var(--radius)',
+            fontSize: 13,
+            color: 'var(--text-muted)',
+            textAlign: 'center',
+          }}>
+            No screenshot available — OCR requires a captured screenshot. Use the Chrome extension for live tab capture.
+          </div>
+        ) : (
+          <div style={{
+            padding: '20px 16px',
+            textAlign: 'center',
+            color: 'var(--text-muted)',
+            fontSize: 13,
+          }}>
+            Run a scan from Browser Capture to see OCR results
+          </div>
+        )}
+      </div>
+    </Panel>
   )
 }

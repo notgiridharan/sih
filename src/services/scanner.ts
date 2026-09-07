@@ -4,6 +4,7 @@ import { detectPromptInjections } from './injection-detector'
 import { detectHiddenContent } from './hidden-content-detector'
 import { sanitizeContext } from './context-sanitizer'
 import { crossValidate } from './cross-validator'
+import { runOCR, createSkippedResult } from './ocr'
 
 function computeRisk(result: Pick<ScanResult, 'piiMatches' | 'promptInjections' | 'hiddenContent' | 'crossValidation'>): RiskScore {
   const privacyScore = Math.min(result.piiMatches.length * 20, 100)
@@ -64,7 +65,38 @@ export function scan(target: ScanTarget): ScanResult {
     promptInjections,
     hiddenContent,
     crossValidation,
+    ocrResult: null,
     risk,
     sanitizedContext,
   }
+}
+
+export async function scanWithOCR(
+  target: ScanTarget,
+  onOCRStatus?: (status: string) => void,
+): Promise<ScanResult> {
+  const result = scan(target)
+
+  if (!target.screenshot) {
+    result.ocrResult = createSkippedResult()
+    return result
+  }
+
+  try {
+    onOCRStatus?.('loading')
+    onOCRStatus?.('processing')
+    const ocrResult = await runOCR(target.screenshot)
+    result.ocrResult = ocrResult
+  } catch {
+    result.ocrResult = {
+      text: '',
+      confidence: 0,
+      blocks: [],
+      status: 'error',
+      error: 'OCR failed unexpectedly',
+      processingTimeMs: 0,
+    }
+  }
+
+  return result
 }

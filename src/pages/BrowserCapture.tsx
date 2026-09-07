@@ -14,7 +14,7 @@ import {
   EyeIcon,
 } from '../components/ui/Icons'
 import { captureFromHTML, getMockCaptureData, getMockHTML } from '../services/capture'
-import { scan } from '../services/scanner'
+import { scanWithOCR } from '../services/scanner'
 import { isExtension, captureActiveTab, captureScreenshot } from '../services/extension-bridge'
 import type { ScanResult, CaptureData, CaptureStatus, DOMNodeInfo } from '../types/scan'
 import type { PageId } from '../types/navigation'
@@ -103,16 +103,15 @@ export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCapt
     if (!capture) return
     setStatus('analyzing')
 
-    setTimeout(() => {
-      const result = scan({
-        url: capture.url,
-        dom: capture.dom,
-        screenshot: capture.screenshot,
-      })
+    scanWithOCR({
+      url: capture.url,
+      dom: capture.dom,
+      screenshot: capture.screenshot,
+    }).then((result) => {
       setScanResult(result)
       onScan(result)
       setStatus('complete')
-    }, 1500)
+    })
   }, [capture, onScan])
 
   const handleUseMock = useCallback(() => {
