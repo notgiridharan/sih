@@ -70,21 +70,44 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       const tabId = tabs[0].id
 
-      chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => ({
-          dom: document.documentElement.outerHTML,
-          url: window.location.href,
-          title: document.title,
-        }),
-      }).then((results) => {
-        if (results && results[0]?.result) {
-          sendResponse({ ok: true, ...results[0].result })
-        } else {
-          sendResponse({ ok: false, error: 'Script execution returned no result' })
+      // Primary: ask the already-injected content script — no host_permissions needed
+      chrome.tabs.sendMessage(tabId, { type: 'CAPTURE_DOM' }, (response) => {
+        if (!chrome.runtime.lastError && response?.ok) {
+          sendResponse({ ok: true, dom: response.dom, url: response.url, title: response.title })
+          return
         }
-      }).catch((err) => {
-        sendResponse({ ok: false, error: err.message })
+
+        // Fallback: content script not ready — inject it then capture via scripting API
+        chrome.scripting.executeScript({
+          target: { tabId },
+          files: ['content-script.js'],
+        }).then(() => {
+          chrome.tabs.sendMessage(tabId, { type: 'CAPTURE_DOM' }, (r2) => {
+            if (!chrome.runtime.lastError && r2?.ok) {
+              sendResponse({ ok: true, dom: r2.dom, url: r2.url, title: r2.title })
+            } else {
+              // Last resort: executeScript directly (requires host_permissions)
+              chrome.scripting.executeScript({
+                target: { tabId },
+                func: () => ({
+                  dom: document.documentElement.outerHTML,
+                  url: window.location.href,
+                  title: document.title,
+                }),
+              }).then((results) => {
+                if (results?.[0]?.result) {
+                  sendResponse({ ok: true, ...results[0].result })
+                } else {
+                  sendResponse({ ok: false, error: 'DOM capture returned no result' })
+                }
+              }).catch((err) => {
+                sendResponse({ ok: false, error: err.message })
+              })
+            }
+          })
+        }).catch((err) => {
+          sendResponse({ ok: false, error: 'Content script injection failed: ' + err.message })
+        })
       })
     })
     return true
