@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Qwen3-0.6B Inference Verifier</title>
+  <style>
+    body { font-family: monospace; background: #0d1117; color: #e6edf3; margin: 0; padding: 24px; }
+    h1   { font-size: 16px; color: #58a6ff; margin-bottom: 4px; }
+    p    { font-size: 12px; color: #8b949e; margin: 0 0 16px; }
+    pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+           padding: 16px; white-space: pre-wrap; font-size: 12px; line-height: 1.5; }
+    .ok  { color: #3fb950; }
+    .err { color: #f85149; }
+    .dim { color: #8b949e; }
+    .progress { color: #d29922; }
+    #log { min-height: 300px; }
+    button { background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+             padding: 8px 16px; border-radius: 6px; cursor: pointer; font-family: monospace;
+             margin-right: 8px; margin-bottom: 16px; }
+    button:hover  { background: #30363d; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+<h1>Qwen3-0.6B Inference Verifier — Sentinel</h1>
+<p>Open this file in Chrome 113+ (WebGPU required). First run downloads ~380 MB; subsequent runs use the browser cache.</p>
+
+<button id="btn-check">Check WebGPU</button>
+<button id="btn-run">Run Full Inference</button>
+<button id="btn-clear">Clear</button>
+
+<pre id="log"></pre>
+
+<script type="module">
+// ─── Config ──────────────────────────────────────────────────────────────────
+
+const MODEL_ID = 'Qwen3-0.6B-q4f16_1-MLC'
+
+const SYSTEM_PROMPT = `You are Sentinel's browser automation planner. Convert a user task and sanitized page context into a structured JSON action plan.
+
+ALLOWED ACTION TYPES ONLY: navigate, click, fill, type, focus, wait, scroll, select, send_keys, go_back
+
+STRICT RULES:
+1. "fill" steps MUST have requiresApproval: true — user supplies sensitive values at runtime
+2. Never embed raw credentials, emails, passwords, or PII in value fields
+3. dependsOn lists step numbers that must complete before this step starts
+4. riskLevel: "low" for navigation/read, "medium" for form fills, "high" for destructive actions
+5. selector: null when no specific DOM target is needed
+
+OUTPUT FORMAT — output ONLY this JSON, nothing else:
+{
+  "reasoning": "one-sentence explanation of the approach",
+  "riskLevel": "low",
+  "steps": [
+    {
+      "stepNumber": 1,
+      "type": "navigate",
+      "selector": null,
+      "value": "https://example.com/login",
+      "description": "Navigate to the login page",
+      "requiresApproval": false,
+      "dependsOn": []
+    }
+  ]
+}`
+
+const TEST_REQUEST = {
+  prompt: 'Log in to the portal',
+  pageUrl: 'https://example.com/dashboard',
+  pageTitle: 'Example Portal',
+  sanitizedContext: `## Forms
+  Form: POST /login
+    [email] username
+    [password] password (redacted)
+## Available Actions
+  [Button] Sign In
+## Navigation Links
+  [Login] → /login
+  [Register] → /register`,
+  redactionSummary: { totalRedacted: 1, categories: { email: 1 } },
+}
+
+// ─── Logger ───────────────────────────────────────────────────────────────────
+
+const logEl = document.getElementById('log')
+function log(msg, cls = '') {
+  logEl.innerHTML += `<span class="${cls}">${escHtml(msg)}\n</span>`
+  logEl.scrollTop = logEl.scrollHeight
+}
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+function ok(label)  { log(`  ✓ ${label}`, 'ok') }
+function err(label) { log(`  ✗ ${label}`, 'err') }
+function dim(label) { log(`  ${label}`, 'dim') }
+
+// ─── WebGPU check ─────────────────────────────────────────────────────────────
+
+document.getElementById('btn-check').addEventListener('click', async () => {
+  log('\n[1] WebGPU availability check', '')
+
+  if (!('gpu' in navigator)) {
+    err('WebGPU not available — upgrade to Chrome 113+ or enable #enable-unsafe-webgpu')
+    return
+  }
+  ok('navigator.gpu exists')
+
+  const adapter = await navigator.gpu.requestAdapter()
+  if (!adapter) { err('No WebGPU adapter found (GPU driver issue or sandboxed environment)'); return }
+  ok(`Adapter: ${adapter.info?.vendor ?? 'unknown vendor'}`)
+
+  const device = await adapter.requestDevice()
+  if (!device) { err('Could not create WebGPU device'); return }
+  ok('WebGPU device created')
+
+  const buf = device.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC })
+  ok(`Buffer allocation: ${buf.size} bytes`)
+  buf.destroy()
+  device.destroy()
+
+  ok('WebGPU is fully functional ✓')
+  log('\nWebGPU check passed — click "Run Full Inference" to load Qwen3-0.6B', 'dim')
+})
+
+// ─── Full inference ───────────────────────────────────────────────────────────
+
+document.getElementById('btn-run').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-run')
+  btn.disabled = true
+
+  log('\n[2] Loading @mlc-ai/web-llm', '')
+
+  let wllm
+  try {
+    wllm = await import('https://esm.run/@mlc-ai/web-llm')
+    ok('web-llm module loaded')
+  } catch (e) {
+    err('Failed to load web-llm: ' + e.message)
+    err('Ensure you have internet access or bundle it with: npm run build:extension')
+    btn.disabled = false
+    return
+  }
+
+  const entry = wllm.prebuiltAppConfig?.model_list?.find(m => m.model_id === MODEL_ID)
+  if (entry) {
+    ok(`"${MODEL_ID}" found in prebuilt registry`)
+    dim(`  vram_required_MB: ${entry.vram_required_MB}`)
+    dim(`  context_window: ${entry.overrides?.context_window_size ?? 'default'}`)
+  } else {
+    err(`"${MODEL_ID}" NOT in prebuilt registry — package may be outdated`)
+    btn.disabled = false
+    return
+  }
+
+  log('\n[3] Creating MLCEngine (downloading model on first run...)', '')
+
+  let engine
+  try {
+    engine = await wllm.CreateMLCEngine(MODEL_ID, {
+      initProgressCallback: (p) => {
+        log(`  ↓ ${p.text}`, 'progress')
+      },
+    })
+    ok('MLCEngine created and model loaded')
+  } catch (e) {
+    err('Engine creation failed: ' + e.message)
+    btn.disabled = false
+    return
+  }
+
+  log('\n[4] Running planning inference', '')
+
+  const userPrompt = `Task: ${TEST_REQUEST.prompt}
+Page URL: ${TEST_REQUEST.pageUrl}
+Page title: ${TEST_REQUEST.pageTitle}
+Note: 1 PII value(s) were redacted from the page context.
+
+Page context (sanitized):
+${TEST_REQUEST.sanitizedContext}
+
+Generate the JSON action plan now.`
+
+  let completion
+  try {
+    completion = await engine.chat.completions.create({
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user',   content: userPrompt },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+      max_tokens: 1024,
+    })
+    ok('Inference completed')
+  } catch (e) {
+    err('Inference failed: ' + e.message)
+    btn.disabled = false
+    return
+  }
+
+  const text = completion.choices[0]?.message?.content ?? ''
+  log('\n[5] Model output (raw JSON):', '')
+  log(text, '')
+
+  let parsed
+  try {
+    parsed = JSON.parse(text)
+    ok('Output is valid JSON')
+  } catch (e) {
+    err('Output is not valid JSON: ' + e.message)
+    btn.disabled = false
+    return
+  }
+
+  log('\n[6] Plan validation', '')
+
+  const steps = Array.isArray(parsed.steps) ? parsed.steps : []
+  ok(`steps array present (${steps.length} steps)`)
+  if (parsed.reasoning) ok(`reasoning: "${parsed.reasoning.slice(0, 80)}"`)
+  if (parsed.riskLevel) ok(`riskLevel: "${parsed.riskLevel}"`)
+
+  for (const [i, s] of steps.entries()) {
+    const valid = ['navigate','click','fill','type','focus','wait','scroll','select','send_keys','go_back']
+    if (valid.includes(s.type)) {
+      ok(`step ${i+1}: type="${s.type}" description="${(s.description ?? '').slice(0, 50)}"`)
+    } else {
+      err(`step ${i+1}: INVALID type="${s.type}"`)
+    }
+    if (s.type === 'fill' && !s.requiresApproval) {
+      err(`step ${i+1}: fill action missing requiresApproval=true`)
+    }
+  }
+
+  log('\n✓ Real Qwen3-0.6B inference verified in Chrome.\n', 'ok')
+  log('The Sentinel extension will use this model for all planning tasks.', 'dim')
+
+  btn.disabled = false
+})
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  logEl.textContent = ''
+})
+</script>
+</body>
+</html>

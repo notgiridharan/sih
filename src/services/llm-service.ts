@@ -8,6 +8,7 @@ import type {
   ActionTarget,
 } from '../types/agent'
 import type { RiskLevel } from '../types/scan'
+import { QwenLLMProvider } from './qwen-planner'
 
 // --- Provider interface ---
 
@@ -498,12 +499,14 @@ export class MockLLMProvider implements LLMProvider {
 // --- Factory ---
 
 export function createLLMProvider(
-  type: 'mock',
+  type: 'mock' | 'qwen',
   opts?: { latencyMs?: number; onThinking?: ThinkingCallback; signal?: AbortSignal },
 ): LLMProvider {
   switch (type) {
     case 'mock':
       return new MockLLMProvider(opts)
+    case 'qwen':
+      return new QwenLLMProvider({ onThinking: opts?.onThinking, signal: opts?.signal })
     default:
       throw new Error(`Unknown LLM provider type: ${type}`)
   }
