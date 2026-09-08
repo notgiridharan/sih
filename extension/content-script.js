@@ -1,4 +1,6 @@
 (() => {
+  console.log('[Sentinel] Content script loaded on:', window.location.href)
+
   // ─── Widget state ─────────────────────────────────────────────────────────
 
   let widgetMeta = null // { minimized: bool, maximized: bool, startTask: number }
@@ -17,7 +19,13 @@
   // ─── Widget injection ─────────────────────────────────────────────────────
 
   function injectWidget() {
-    if (document.getElementById('__sentinel_host__')) return
+    console.log('[Sentinel] injectWidget called')
+    if (document.getElementById('__sentinel_host__')) {
+      console.log('[Sentinel] Widget already exists')
+      return
+    }
+
+    console.log('[Sentinel] Creating widget host element')
 
     // Outer host — uses Shadow DOM to prevent page styles from leaking in
     const host = document.createElement('div')
@@ -322,7 +330,10 @@
   // ─── Existing message handlers ─────────────────────────────────────────────
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    console.log('[Sentinel] Content script received message:', msg.type)
+
     if (msg.type === 'TOGGLE_WIDGET') {
+      console.log('[Sentinel] Toggling widget')
       toggleWidget()
       sendResponse({ ok: true })
       return true

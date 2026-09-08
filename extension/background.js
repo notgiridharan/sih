@@ -1,18 +1,29 @@
 // Extension icon click → inject/toggle the Sentinel floating widget in the active tab.
-// The side panel (dashboard) is no longer the primary entry point;
-// it remains accessible via the widget's settings menu.
+console.log('[Sentinel] Background service worker loaded')
+
 chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab.id) return
+  console.log('[Sentinel] Icon clicked on tab:', tab.id, tab.url)
+
+  if (!tab.id) {
+    console.warn('[Sentinel] No tab.id available')
+    return
+  }
 
   try {
-    await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_WIDGET' })
-  } catch {
+    console.log('[Sentinel] Sending TOGGLE_WIDGET to tab', tab.id)
+    const response = await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_WIDGET' })
+    console.log('[Sentinel] Response:', response)
+  } catch (error) {
+    console.log('[Sentinel] First attempt failed, retrying:', error.message)
+
     // Content script not yet ready on this tab (fresh load) — retry after brief pause
     setTimeout(async () => {
       try {
-        await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_WIDGET' })
-      } catch {
-        // Restricted page (chrome://, file://, devtools, etc.) — silently ignore
+        console.log('[Sentinel] Retry sending TOGGLE_WIDGET to tab', tab.id)
+        const response = await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_WIDGET' })
+        console.log('[Sentinel] Retry response:', response)
+      } catch (retryError) {
+        console.log('[Sentinel] Retry failed - likely restricted page:', retryError.message)
       }
     }, 150)
   }
