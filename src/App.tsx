@@ -60,6 +60,7 @@ function PageContent({
       />
     )
     case 'settings': return <Settings />
+    case 'agent-prompt': return <div style={{ padding: 24, color: 'var(--text-secondary)' }}>Agent Prompt — coming soon</div>
   }
 }
 

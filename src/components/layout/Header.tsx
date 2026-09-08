@@ -12,6 +12,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'security-report': 'Security Report',
   'scan-history': 'Scan History',
   'settings': 'Settings',
+  'agent-prompt': 'Agent Prompt',
 }
 
 interface HeaderProps {

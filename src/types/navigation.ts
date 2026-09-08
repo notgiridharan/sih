@@ -8,3 +8,4 @@ export type PageId =
   | 'security-report'
   | 'scan-history'
   | 'settings'
+  | 'agent-prompt'

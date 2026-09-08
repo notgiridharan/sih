@@ -11,6 +11,7 @@ import {
   SettingsIcon,
   LockIcon,
   XIcon,
+  BotIcon,
 } from '../ui/Icons'
 
 interface NavItem {
@@ -28,6 +29,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'visual-analysis', label: 'DOM Analysis', icon: <EyeIcon /> },
   { id: 'sanitized-context', label: 'Sanitized Context', icon: <FileTextIcon />, section: 'Output' },
   { id: 'security-report', label: 'Security Report', icon: <ClipboardIcon /> },
+  { id: 'agent-prompt', label: 'Agent Prompt', icon: <BotIcon />, section: 'Agent' },
   { id: 'scan-history', label: 'Scan History', icon: <ClockIcon />, section: 'History' },
   { id: 'settings', label: 'Settings', icon: <SettingsIcon /> },
 ]
