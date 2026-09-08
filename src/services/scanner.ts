@@ -2,6 +2,7 @@ import type { ScanResult, ScanTarget, PIIMatch, RiskLevel, RiskScore } from '../
 import { detectPII } from './pii-detector'
 import { detectPIIWithGLiNER, initGLiNER } from './gliner-pii-detector'
 import { detectPromptInjections } from './injection-detector'
+import { detectInjectionWithDeBERTa, initDeBERTa, mergeInjectionResults } from './deberta-injection-detector'
 import { detectHiddenContent } from './hidden-content-detector'
 import { sanitizeContext } from './context-sanitizer'
 import { crossValidate } from './cross-validator'
@@ -12,6 +13,7 @@ import { aggregateFindings } from './findings'
 
 // Begin model warm-up in the background as soon as this module is first imported.
 initGLiNER()
+initDeBERTa()
 
 const MAX_DOM_LENGTH = 2_000_000
 
@@ -202,17 +204,36 @@ export async function scanWithML(
 
   if (signal?.aborted) return result
 
-  // 2. Async GLiNER inference
+  // 2. Async ML inference (GLiNER PII + DeBERTa injection) — non-fatal
+  let piiUpdated = false
+  let injectionUpdated = false
+
   try {
     onMLStatus?.('running')
-    const mlMatches = await detectPIIWithGLiNER(target.dom)
+
+    const [mlMatches, mlInjection] = await Promise.all([
+      detectPIIWithGLiNER(target.dom).catch(() => []),
+      detectInjectionWithDeBERTa(target.dom).catch(() => null),
+    ])
 
     if (signal?.aborted) return result
 
     if (mlMatches.length > 0) {
       result.piiMatches = mergePIIMatches(result.piiMatches, mlMatches)
+      piiUpdated = true
+    }
 
-      // Re-compute derived fields that depend on piiMatches
+    const augmentedInjections = mergeInjectionResults(
+      result.promptInjections,
+      mlInjection,
+      target.dom,
+    )
+    if (augmentedInjections.length !== result.promptInjections.length) {
+      result.promptInjections = augmentedInjections
+      injectionUpdated = true
+    }
+
+    if (piiUpdated || injectionUpdated) {
       const sanitization = sanitizeContext(
         target.dom,
         result.piiMatches,
