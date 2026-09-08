@@ -1,5 +1,22 @@
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
-  .catch(() => {})
+// Extension icon click → inject/toggle the Sentinel floating widget in the active tab.
+// The side panel (dashboard) is no longer the primary entry point;
+// it remains accessible via the widget's settings menu.
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab.id) return
+
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_WIDGET' })
+  } catch {
+    // Content script not yet ready on this tab (fresh load) — retry after brief pause
+    setTimeout(async () => {
+      try {
+        await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_WIDGET' })
+      } catch {
+        // Restricted page (chrome://, file://, devtools, etc.) — silently ignore
+      }
+    }, 150)
+  }
+})
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'CAPTURE_SCREENSHOT') {

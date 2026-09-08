@@ -1,21 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "Privacy Vision Agent",
-  "version": "0.1.0",
-  "description": "Privacy-preserving security layer between websites and AI agents. Detects PII, prompt injections, and hidden content — all locally in your browser.",
+  "name": "Sentinel",
+  "version": "0.2.0",
+  "description": "Privacy-first AI browser agent. Completes web tasks locally — your data never leaves your device.",
   "permissions": [
     "activeTab",
     "scripting",
-    "sidePanel"
+    "sidePanel",
+    "tabs",
+    "storage"
   ],
   "action": {
-    "default_title": "Privacy Vision Agent",
+    "default_title": "Open Sentinel",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png"
-    },
-    "default_popup": "index.html"
+    }
   },
   "side_panel": {
     "default_path": "index.html"
@@ -29,6 +30,12 @@
       "matches": ["<all_urls>"],
       "js": ["content-script.js"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["widget.html", "assets/*"],
+      "matches": ["<all_urls>"]
     }
   ],
   "icons": {

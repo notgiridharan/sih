@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
       ? {
           outDir: 'dist-extension',
           rollupOptions: {
-            input: { index: 'index.html' },
+            input: { index: 'index.html', widget: 'widget.html' },
           },
         }
       : {},
