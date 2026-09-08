@@ -1,0 +1,1 @@
+import{f as e,m as t,p as n}from"./extension-bridge-B9PeLq-Y.js";import{n as r,t as i}from"./widget-CPV8Q5mm.js";var a=t(),o=n(),s=e();(0,o.createRoot)(document.getElementById(`sentinel-widget-root`)).render((0,s.jsx)(a.StrictMode,{children:(0,s.jsx)(i,{pageSource:new r})}));

@@ -93,6 +93,17 @@ export class StaticPageSource implements PageSourceProvider {
   }
 }
 
+// Used when Sentinel IS the page (New Tab override) — no content script available
+export class NewTabPageSource implements PageSourceProvider {
+  async getPage(): Promise<PageSource> {
+    return {
+      dom: '<html><head><title>New Tab</title></head><body><p>New browser tab. No page content yet.</p></body></html>',
+      url: window.location.href,
+      title: document.title || 'New Tab',
+    }
+  }
+}
+
 // --- Step builder ---
 
 function makeStep(phase: AgentPhase, label: string, detail: string | null = null): AgentStep {

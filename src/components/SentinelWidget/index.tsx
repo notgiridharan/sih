@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { ActionPlan, AgentSession } from '../../types/agent'
 import { PromptProcessor } from '../../services/prompt-processor'
-import type { ProgressEvent } from '../../services/prompt-processor'
+import type { ProgressEvent, PageSourceProvider } from '../../services/prompt-processor'
 
 // ─── Widget-local state type ──────────────────────────────────────────────
 
@@ -306,7 +306,11 @@ function ErrorCard({
 
 // ─── Main widget ──────────────────────────────────────────────────────────
 
-export function SentinelWidget() {
+export interface SentinelWidgetProps {
+  pageSource?: PageSourceProvider
+}
+
+export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
   const [messages, setMessages] = useState<Message[]>([WELCOME])
   const [agentState, setAgentState] = useState<WidgetState>('ready')
   const [inputValue, setInputValue] = useState('')
@@ -355,7 +359,7 @@ export function SentinelWidget() {
     const controller = new AbortController()
     abortControllerRef.current = controller
 
-    const processor = new PromptProcessor({ signal: controller.signal })
+    const processor = new PromptProcessor({ signal: controller.signal, pageSource })
 
     const unsubscribe = processor.onProgress((event: ProgressEvent) => {
       if (controller.signal.aborted) return

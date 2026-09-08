@@ -9,6 +9,12 @@ chrome.action.onClicked.addListener(async (tab) => {
     return
   }
 
+  // New Tab override page has Sentinel built-in — widget is always visible
+  if (tab.url?.includes('newtab.html')) {
+    console.log('[Sentinel] New Tab page — widget already visible')
+    return
+  }
+
   async function tryToggle() {
     try {
       const response = await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_WIDGET' })
