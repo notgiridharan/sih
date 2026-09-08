@@ -9,23 +9,31 @@ chrome.action.onClicked.addListener(async (tab) => {
     return
   }
 
-  try {
-    console.log('[Sentinel] Sending TOGGLE_WIDGET to tab', tab.id)
-    const response = await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_WIDGET' })
-    console.log('[Sentinel] Response:', response)
-  } catch (error) {
-    console.log('[Sentinel] First attempt failed, retrying:', error.message)
+  async function tryToggle() {
+    try {
+      const response = await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_WIDGET' })
+      console.log('[Sentinel] Toggle response:', response)
+      return true
+    } catch {
+      return false
+    }
+  }
 
-    // Content script not yet ready on this tab (fresh load) — retry after brief pause
-    setTimeout(async () => {
-      try {
-        console.log('[Sentinel] Retry sending TOGGLE_WIDGET to tab', tab.id)
-        const response = await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_WIDGET' })
-        console.log('[Sentinel] Retry response:', response)
-      } catch (retryError) {
-        console.log('[Sentinel] Retry failed - likely restricted page:', retryError.message)
-      }
-    }, 150)
+  // First attempt — works on pages where the content script is already injected
+  if (await tryToggle()) return
+
+  // Content script not ready (fresh tab, extension reload) — inject programmatically then retry
+  console.log('[Sentinel] Content script not ready, injecting programmatically...')
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content-script.js'],
+    })
+    // Allow script to initialize its message listeners
+    await new Promise(resolve => setTimeout(resolve, 80))
+    await tryToggle()
+  } catch (err) {
+    console.log('[Sentinel] Injection failed — restricted page:', err.message)
   }
 })
 
