@@ -4,6 +4,8 @@ import { PromptProcessor } from '../../services/prompt-processor'
 import type { ProgressEvent, PageSourceProvider } from '../../services/prompt-processor'
 import { ActionExecutor, MockDOMBridge } from '../../services/action-executor'
 import { isExtension, ExtensionDOMBridge } from '../../services/extension-bridge'
+import { initQwen } from '../../services/qwen-planner'
+import { selectLLMProvider, isWebGpuAvailable } from '../../services/llm-provider-selector'
 
 // ─── Widget-local state type ──────────────────────────────────────────────
 
@@ -334,6 +336,13 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, agentState, confirmation, completion, errorMessage])
 
+  // Pre-load Qwen3 model in the background; no-op if WebGPU unavailable
+  useEffect(() => {
+    if (isWebGpuAvailable()) {
+      initQwen()
+    }
+  }, [])
+
   // Auto-resize textarea
   const resizeTextarea = useCallback(() => {
     const el = textareaRef.current
@@ -361,7 +370,12 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
     const controller = new AbortController()
     abortControllerRef.current = controller
 
-    const processor = new PromptProcessor({ signal: controller.signal, pageSource })
+    const onThinking = (step: string) => {
+      if (!controller.signal.aborted) setActivityDetail(step)
+    }
+
+    const llmProvider = selectLLMProvider({ onThinking, signal: controller.signal })
+    const processor = new PromptProcessor({ signal: controller.signal, pageSource, llmProvider })
 
     const unsubscribe = processor.onProgress((event: ProgressEvent) => {
       if (controller.signal.aborted) return
