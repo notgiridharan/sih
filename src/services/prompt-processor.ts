@@ -4,9 +4,6 @@ import type {
   AgentStep,
   AgentPhase,
   AgentPrompt,
-  ActionPlan,
-  ActionPlanStep,
-  ActionType,
   LLMRequest,
 } from '../types/agent'
 import type { ScanResult } from '../types/scan'
@@ -17,6 +14,7 @@ import { detectPromptInjections } from './injection-detector'
 import { captureActiveTab, isExtension } from './extension-bridge'
 import type { LLMProvider } from './llm-service'
 import { MockLLMProvider } from './llm-service'
+import { validatePlanSafety } from './action-safety-validator'
 
 // --- Progress events ---
 
@@ -41,90 +39,8 @@ export interface ProgressEvent {
 
 export type ProgressListener = (event: ProgressEvent) => void
 
-// --- Action validation ---
-
-const ALLOWED_ACTION_TYPES: Set<ActionType> = new Set([
-  'navigate', 'click', 'fill', 'type', 'focus', 'wait',
-])
-
-const DANGEROUS_SELECTOR_PATTERNS = [
-  /javascript\s*:/i,
-  /on\w+\s*=/i,
-  /<script/i,
-  /eval\s*\(/i,
-  /Function\s*\(/i,
-  /document\.cookie/i,
-  /document\.write/i,
-  /window\.location\s*=/i,
-  /\.innerHTML\s*=/i,
-]
-
-const DANGEROUS_VALUE_PATTERNS = [
-  /javascript\s*:/i,
-  /<script/i,
-  /on\w+\s*=\s*["']/i,
-]
-
-export function validateAction(step: ActionPlanStep): { valid: boolean; reason: string | null } {
-  const { action } = step
-
-  if (!ALLOWED_ACTION_TYPES.has(action.type)) {
-    return { valid: false, reason: `Disallowed action type: ${action.type}` }
-  }
-
-  if (!action.safe) {
-    return { valid: false, reason: 'Action marked as unsafe' }
-  }
-
-  if (action.target?.selector) {
-    for (const pattern of DANGEROUS_SELECTOR_PATTERNS) {
-      if (pattern.test(action.target.selector)) {
-        return { valid: false, reason: `Dangerous selector pattern detected: ${pattern.source}` }
-      }
-    }
-  }
-
-  if (action.value) {
-    for (const pattern of DANGEROUS_VALUE_PATTERNS) {
-      if (pattern.test(action.value)) {
-        return { valid: false, reason: `Dangerous value pattern detected: ${pattern.source}` }
-      }
-    }
-  }
-
-  if (action.type === 'navigate' && action.value) {
-    if (/^javascript:/i.test(action.value.trim())) {
-      return { valid: false, reason: 'javascript: URLs are not allowed' }
-    }
-  }
-
-  if (action.type === 'fill' && !action.requiresApproval) {
-    return { valid: false, reason: 'Fill actions must require user approval' }
-  }
-
-  if (action.timeoutMs <= 0 || action.timeoutMs > 30000) {
-    return { valid: false, reason: `Invalid timeout: ${action.timeoutMs}ms (must be 1-30000)` }
-  }
-
-  if (step.dependsOn.some(dep => dep >= step.stepNumber)) {
-    return { valid: false, reason: 'Step depends on a later or same step' }
-  }
-
-  return { valid: true, reason: null }
-}
-
-export function validatePlan(plan: ActionPlan): { valid: boolean; invalidSteps: { step: number; reason: string }[] } {
-  const invalidSteps: { step: number; reason: string }[] = []
-
-  for (const step of plan.steps) {
-    const result = validateAction(step)
-    if (!result.valid) {
-      invalidSteps.push({ step: step.stepNumber, reason: result.reason! })
-    }
-  }
-
-  return { valid: invalidSteps.length === 0, invalidSteps }
-}
+// Re-export the safety validator
+export { validateStepSafety, validatePlanSafety, validateActionSafety } from './action-safety-validator'
 
 // --- Prompt sanitization ---
 
@@ -321,9 +237,12 @@ export class PromptProcessor {
       this.checkAborted()
 
       // 6. Validate plan
-      const validation = validatePlan(llmResponse.plan)
-      if (!validation.valid) {
-        const reasons = validation.invalidSteps.map(s => `Step ${s.step}: ${s.reason}`).join('; ')
+      const validation = validatePlanSafety(llmResponse.plan)
+      if (!validation.allowed) {
+        const reasons = validation.results
+          .filter(r => !r.result.allowed)
+          .map(r => `Step ${r.stepNumber}: ${r.result.reason}`)
+          .join('; ')
         throw new ProcessorError(`Plan validation failed: ${reasons}`, 'processing-prompt')
       }
 
