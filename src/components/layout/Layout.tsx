@@ -35,7 +35,7 @@ export function Layout({ activePage, onNavigate, sidebarOpen, onSidebarToggle, c
 
         <main style={{
           flex: 1,
-          padding: 24,
+          padding: 'var(--space-xl)',
           overflowY: 'auto',
           height: 'calc(100vh - var(--header-height))',
         }}>

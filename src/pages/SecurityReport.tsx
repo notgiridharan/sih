@@ -18,8 +18,8 @@ export function SecurityReport({ scanResults }: SecurityReportProps) {
   const criticals = data.filter((s) => s.risk.overall === 'critical').length
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-md)' }}>
         <StatCard label="PII Findings" value={totalPii} icon={<ShieldIcon size={20} />} color="var(--orange)" />
         <StatCard label="Injections" value={totalInj} icon={<AlertIcon size={20} />} color="var(--red)" />
         <StatCard label="Hidden Content" value={totalHidden} icon={<EyeIcon size={20} />} color="var(--yellow)" />

@@ -125,7 +125,7 @@ export function SanitizedContext({ scanResults, capturedDOM }: SanitizedContextP
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
       {/* Header with scan info */}
       {latest && (
         <Card>
@@ -142,7 +142,7 @@ export function SanitizedContext({ scanResults, capturedDOM }: SanitizedContextP
       )}
 
       {/* Stats bar */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-md)' }}>
         {[
           { label: 'Redactions', value: result.stats.totalRedactions, color: 'var(--red)' },
           { label: 'Injections Bound', value: result.stats.injectionsBound, color: 'var(--yellow)' },
@@ -152,15 +152,14 @@ export function SanitizedContext({ scanResults, capturedDOM }: SanitizedContextP
         ].map((s) => (
           <div key={s.label} style={{
             background: 'var(--bg-card)',
-            border: '1px solid var(--border)',
             borderRadius: 'var(--radius)',
-            padding: '12px 16px',
+            padding: 'var(--space-sm) var(--space-md)',
             textAlign: 'center',
           }}>
-            <div style={{ fontSize: 22, fontWeight: 700, color: s.color, fontFamily: 'var(--mono)' }}>
+            <div style={{ fontSize: 26, fontFamily: 'var(--font-display)', fontWeight: 300, color: s.color }}>
               {s.value}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-body)' }}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -171,7 +170,6 @@ export function SanitizedContext({ scanResults, capturedDOM }: SanitizedContextP
         alignItems: 'center',
         gap: 0,
         background: 'var(--bg-card)',
-        border: '1px solid var(--border)',
         borderRadius: 'var(--radius)',
         overflow: 'hidden',
       }}>

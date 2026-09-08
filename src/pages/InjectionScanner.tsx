@@ -1,6 +1,5 @@
 import { Panel } from '../components/ui/Panel'
 import { Badge } from '../components/ui/Badge'
-import { Card } from '../components/ui/Card'
 import { AlertIcon } from '../components/ui/Icons'
 import { mockScanHistory } from '../data/mock'
 import type { ScanResult } from '../types/scan'
@@ -16,16 +15,16 @@ export function InjectionScanner({ scanResults }: InjectionScannerProps) {
   )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-md)' }}>
         {(['critical', 'high', 'medium', 'low'] as const).map((sev) => {
           const count = allInjections.filter((i) => i.severity === sev).length
           return (
-            <Card key={sev}>
-              <p style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 4, letterSpacing: '0.05em' }}>{sev}</p>
-              <p style={{ fontSize: 24, fontWeight: 700, color: count > 0 ? `var(--${sev === 'critical' ? 'red' : sev === 'high' ? 'orange' : sev === 'medium' ? 'yellow' : 'green'})` : 'var(--text-muted)' }}>{count}</p>
+            <div key={sev} style={{ padding: 'var(--space-md)', background: 'var(--bg-card)', borderRadius: 'var(--radius)' }}>
+              <p style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 4, letterSpacing: '0.08em', fontWeight: 500, fontFamily: 'var(--font-body)' }}>{sev}</p>
+              <p style={{ fontSize: 28, fontFamily: 'var(--font-display)', fontWeight: 300, color: count > 0 ? `var(--${sev === 'critical' ? 'red' : sev === 'high' ? 'orange' : sev === 'medium' ? 'yellow' : 'green'})` : 'var(--text-muted)' }}>{count}</p>
               <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>injections</p>
-            </Card>
+            </div>
           )
         })}
       </div>

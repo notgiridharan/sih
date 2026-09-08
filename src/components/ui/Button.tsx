@@ -14,9 +14,9 @@ interface ButtonProps {
 }
 
 const SIZE_STYLES: Record<ButtonSize, CSSProperties> = {
-  sm: { padding: '5px 10px', fontSize: 12 },
-  md: { padding: '8px 16px', fontSize: 13 },
-  lg: { padding: '10px 20px', fontSize: 14 },
+  sm: { padding: '5px 12px', fontSize: 12 },
+  md: { padding: '8px 18px', fontSize: 13 },
+  lg: { padding: '10px 24px', fontSize: 14 },
 }
 
 const VARIANT_STYLES: Record<ButtonVariant, CSSProperties> = {
@@ -26,7 +26,7 @@ const VARIANT_STYLES: Record<ButtonVariant, CSSProperties> = {
     border: '1px solid transparent',
   },
   secondary: {
-    background: 'var(--bg-card)',
+    background: 'transparent',
     color: 'var(--text-primary)',
     border: '1px solid var(--border)',
   },
@@ -61,10 +61,11 @@ export function Button({
         gap: 6,
         borderRadius: 'var(--radius)',
         fontWeight: 500,
-        fontFamily: 'inherit',
+        fontFamily: 'var(--font-body)',
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
-        transition: 'opacity 0.15s, background 0.15s',
+        transition: 'opacity 0.2s ease, background 0.2s ease',
+        letterSpacing: '0.01em',
         ...VARIANT_STYLES[variant],
         ...SIZE_STYLES[size],
         ...style,

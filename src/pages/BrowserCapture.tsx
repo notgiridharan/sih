@@ -174,7 +174,7 @@ export function BrowserCapture({ onScan, onNavigate, onCaptureDOM }: BrowserCapt
   const isBusy = isCapturing || isAnalyzing
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
       {/* Workflow Progress */}
       <WorkflowProgress status={status} />
 
@@ -401,10 +401,9 @@ function WorkflowProgress({ status }: { status: CaptureStatus }) {
       display: 'flex',
       alignItems: 'center',
       gap: 0,
-      padding: '16px 20px',
+      padding: 'var(--space-md) var(--space-lg)',
       background: 'var(--bg-card)',
       borderRadius: 'var(--radius-lg)',
-      border: '1px solid var(--border)',
     }}>
       {WORKFLOW_STEPS.map((step, i) => {
         const isActive = i === current
@@ -470,7 +469,7 @@ function WorkflowProgress({ status }: { status: CaptureStatus }) {
               </div>
               <span style={{
                 fontSize: 12,
-                fontWeight: isActive ? 600 : 400,
+                fontWeight: isActive ? 500 : 400,
                 color: textColor,
                 whiteSpace: 'nowrap',
               }}>
@@ -958,10 +957,10 @@ function CaptureMetadataPanel({ capture }: { capture: CaptureData }) {
             background: 'var(--bg-input)',
             borderRadius: 'var(--radius-sm)',
           }}>
-            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600 }}>
+            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
               {s.label}
             </span>
-            <span style={{ fontSize: 18, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ fontSize: 20, fontFamily: 'var(--font-display)', fontWeight: 300, color: s.color, fontVariantNumeric: 'tabular-nums' }}>
               {typeof s.value === 'number' ? s.value.toLocaleString() : s.value}
             </span>
           </div>
@@ -1055,10 +1054,10 @@ function SummaryCard({
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, color: count > 0 ? color : 'var(--text-muted)' }}>
         {icon}
-        <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
+        <span style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: 'var(--font-body)' }}>{label}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-        <span style={{ fontSize: 26, fontWeight: 800, color: count > 0 ? color : 'var(--text-muted)' }}>
+        <span style={{ fontSize: 28, fontFamily: 'var(--font-display)', fontWeight: 300, color: count > 0 ? color : 'var(--text-muted)' }}>
           {count}
         </span>
         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>found</span>

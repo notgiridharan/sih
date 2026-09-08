@@ -15,21 +15,17 @@ export function Card({ children, style, padding = true, hover = false, onClick }
       onClick={onClick}
       style={{
         background: 'var(--bg-card)',
-        border: '1px solid var(--border)',
         borderRadius: 'var(--radius-lg)',
-        padding: padding ? 20 : 0,
+        padding: padding ? 'var(--space-lg)' : 0,
         cursor: onClick ? 'pointer' : undefined,
-        transition: 'background 0.15s, border-color 0.15s',
-        ...(hover ? { ':hover': {} } : {}),
+        transition: 'background 0.2s ease',
         ...style,
       }}
       onMouseEnter={hover ? (e) => {
         e.currentTarget.style.background = 'var(--bg-card-hover)'
-        e.currentTarget.style.borderColor = 'var(--border-light)'
       } : undefined}
       onMouseLeave={hover ? (e) => {
         e.currentTarget.style.background = 'var(--bg-card)'
-        e.currentTarget.style.borderColor = 'var(--border)'
       } : undefined}
     >
       {children}

@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { Card } from '../components/ui/Card'
 import { Panel } from '../components/ui/Panel'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -69,15 +68,14 @@ export function Dashboard({ onNavigate, scanResults, storedScans }: DashboardPro
   const hasRealData = allScans.length > 0
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
       <MetricCards metrics={metrics} />
 
-      {/* Stats overview from stored scans */}
       {hasRealData && (
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 14,
+          gap: 'var(--space-md)',
         }} className="dashboard-grid-4">
           <StatTile label="Total Scans" value={stats.totalScans} color="var(--cyan)" />
           <StatTile label="Scans Today" value={stats.scansToday} color="var(--accent)" />
@@ -86,22 +84,20 @@ export function Dashboard({ onNavigate, scanResults, storedScans }: DashboardPro
         </div>
       )}
 
-      {/* Risk level breakdown */}
       {hasRealData && stats.totalScans > 0 && (
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(5, 1fr)',
-          gap: 14,
+          gap: 'var(--space-md)',
         }} className="dashboard-grid-5">
-          <StatTile label="Critical Risks" value={stats.criticalCount} color="var(--red)" />
-          <StatTile label="High Risks" value={stats.highCount} color="var(--orange)" />
-          <StatTile label="Medium Risks" value={stats.mediumCount} color="var(--yellow)" />
-          <StatTile label="Low Risks" value={stats.lowCount} color="var(--green)" />
+          <StatTile label="Critical" value={stats.criticalCount} color="var(--red)" />
+          <StatTile label="High" value={stats.highCount} color="var(--orange)" />
+          <StatTile label="Medium" value={stats.mediumCount} color="var(--yellow)" />
+          <StatTile label="Low" value={stats.lowCount} color="var(--green)" />
           <StatTile label="Clean" value={stats.noneCount} color="var(--text-muted)" />
         </div>
       )}
 
-      {/* Risk trend */}
       {hasRealData && trend.length >= 2 && (
         <Panel title="Risk Trend" subtitle={`Last ${trend.length} days`}>
           <TrendChart data={trend} />
@@ -109,45 +105,44 @@ export function Dashboard({ onNavigate, scanResults, storedScans }: DashboardPro
       )}
       {hasRealData && trend.length < 2 && (
         <Panel title="Risk Trend">
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '24px 0' }}>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-xl) 0' }}>
             Not enough scan history to calculate trends.
           </p>
         </Panel>
       )}
 
-      {/* Domain statistics */}
       {hasRealData && topDomains.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }} className="dashboard-grid-2">
-          <Panel title="Most Scanned Domains" noPadding>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }} className="dashboard-grid-2">
+          <Panel title="Most Scanned" noPadding>
             <div>
               {topDomains.map((d, i) => (
                 <div key={d.hostname} style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '10px 20px',
+                  padding: '12px var(--space-lg)',
                   borderBottom: i < topDomains.length - 1 ? '1px solid var(--border)' : 'none',
                 }}>
                   <span style={{ fontSize: 13, fontFamily: 'var(--mono)', color: 'var(--text-primary)' }}>{d.hostname}</span>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{d.scanCount} scan{d.scanCount !== 1 ? 's' : ''}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{d.scanCount}</span>
                 </div>
               ))}
             </div>
           </Panel>
-          <Panel title="Highest Risk Domains" noPadding>
+          <Panel title="Highest Risk" noPadding>
             <div>
               {riskyDomains.map((d, i) => (
                 <div key={d.hostname} style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '10px 20px',
+                  padding: '12px var(--space-lg)',
                   borderBottom: i < riskyDomains.length - 1 ? '1px solid var(--border)' : 'none',
                 }}>
                   <span style={{ fontSize: 13, fontFamily: 'var(--mono)', color: 'var(--text-primary)' }}>{d.hostname}</span>
                   <span style={{
                     fontSize: 13,
-                    fontWeight: 700,
+                    fontWeight: 600,
                     fontVariantNumeric: 'tabular-nums',
                     color: d.highestScore >= 75 ? 'var(--red)' : d.highestScore >= 50 ? 'var(--orange)' : d.highestScore >= 25 ? 'var(--yellow)' : 'var(--green)',
                   }}>
@@ -170,16 +165,31 @@ export function Dashboard({ onNavigate, scanResults, storedScans }: DashboardPro
 
 function StatTile({ label, value, suffix, color }: { label: string; value: number; suffix?: string; color: string }) {
   return (
-    <Card>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
-          {label}
-        </span>
-        <span style={{ fontSize: 28, fontWeight: 800, color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-          {value}{suffix && <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>{suffix}</span>}
-        </span>
-      </div>
-    </Card>
+    <div style={{
+      padding: 'var(--space-lg)',
+      background: 'var(--bg-card)',
+      borderRadius: 'var(--radius-lg)',
+    }}>
+      <span style={{
+        fontSize: 13,
+        fontWeight: 400,
+        color: 'var(--text-muted)',
+        display: 'block',
+        marginBottom: 8,
+      }}>
+        {label}
+      </span>
+      <span style={{
+        fontSize: 32,
+        fontWeight: 300,
+        fontFamily: 'var(--font-display)',
+        color,
+        lineHeight: 1,
+        fontVariantNumeric: 'tabular-nums',
+      }}>
+        {value}{suffix && <span style={{ fontSize: 14, color: 'var(--text-muted)', fontFamily: 'var(--font-body)' }}>{suffix}</span>}
+      </span>
+    </div>
   )
 }
 
@@ -206,8 +216,8 @@ function TrendChart({ data }: { data: { date: string; avgScore: number; scanCoun
                 height: `${Math.max(pct, 2)}%`,
                 borderRadius: 'var(--radius-sm)',
                 background: color,
-                opacity: 0.8,
-                transition: 'height 0.3s ease',
+                opacity: 0.7,
+                transition: 'height 0.4s ease',
                 minHeight: 4,
               }} />
               <span style={{ fontSize: 9, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{dateLabel}</span>
@@ -226,42 +236,42 @@ function MetricCards({ metrics }: { metrics: ReturnType<typeof computeMetrics> }
     <div style={{
       display: 'grid',
       gridTemplateColumns: 'repeat(5, 1fr)',
-      gap: 14,
+      gap: 'var(--space-md)',
     }}
       className="dashboard-grid-5"
     >
       <MetricCard
-        label="Privacy Risk Score"
+        label="Privacy Risk"
         value={metrics.privacyRiskScore}
         maxValue={100}
-        icon={<ShieldIcon size={20} />}
+        icon={<ShieldIcon size={18} />}
         color="var(--orange)"
         ringColor="var(--orange)"
       />
       <MetricCard
-        label="Prompt Injection Risk"
+        label="Injection Risk"
         value={metrics.injectionRiskScore}
         maxValue={100}
-        icon={<AlertIcon size={20} />}
+        icon={<AlertIcon size={18} />}
         color="var(--red)"
         ringColor="var(--red)"
       />
       <MetricCard
         label="Sensitive Elements"
         value={metrics.sensitiveElements}
-        icon={<LockIcon size={20} />}
+        icon={<LockIcon size={18} />}
         color="var(--yellow)"
       />
       <MetricCard
-        label="Suspicious Instructions"
+        label="Suspicious"
         value={metrics.suspiciousInstructions}
-        icon={<EyeIcon size={20} />}
+        icon={<EyeIcon size={18} />}
         color="var(--red)"
       />
       <MetricCard
         label="Pages Scanned"
         value={metrics.pagesScanned}
-        icon={<GlobeIcon size={20} />}
+        icon={<GlobeIcon size={18} />}
         color="var(--cyan)"
       />
     </div>
@@ -285,23 +295,25 @@ function MetricCard({
 }) {
   const showRing = maxValue !== undefined && ringColor
   return (
-    <Card>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{
+      padding: 'var(--space-lg)',
+      background: 'var(--bg-card)',
+      borderRadius: 'var(--radius-lg)',
+    }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{
-            fontSize: 11,
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
+            fontSize: 13,
+            fontWeight: 400,
             color: 'var(--text-muted)',
           }}>
             {label}
           </span>
           <div style={{
-            width: 30,
-            height: 30,
-            borderRadius: 'var(--radius-sm)',
-            background: `color-mix(in srgb, ${color} 15%, transparent)`,
+            width: 28,
+            height: 28,
+            borderRadius: 'var(--radius)',
+            background: 'var(--bg-secondary)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -315,26 +327,44 @@ function MetricCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <MiniRing value={value} max={maxValue} color={ringColor} />
             <div>
-              <span style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-heading)', lineHeight: 1 }}>
+              <span style={{
+                fontSize: 32,
+                fontWeight: 300,
+                fontFamily: 'var(--font-display)',
+                color: 'var(--text-heading)',
+                lineHeight: 1,
+              }}>
                 {value}
               </span>
               <span style={{ fontSize: 14, color: 'var(--text-muted)', marginLeft: 2 }}>
                 /{maxValue}
               </span>
-              <p style={{ fontSize: 11, color: riskLabel(value).color, marginTop: 2, fontWeight: 600 }}>
+              <p style={{
+                fontSize: 11,
+                color: riskLabel(value).color,
+                marginTop: 4,
+                fontWeight: 500,
+                letterSpacing: '0.02em',
+              }}>
                 {riskLabel(value).text}
               </p>
             </div>
           </div>
         ) : (
           <div>
-            <span style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-heading)', lineHeight: 1 }}>
+            <span style={{
+              fontSize: 32,
+              fontWeight: 300,
+              fontFamily: 'var(--font-display)',
+              color: 'var(--text-heading)',
+              lineHeight: 1,
+            }}>
               {value.toLocaleString()}
             </span>
           </div>
         )}
       </div>
-    </Card>
+    </div>
   )
 }
 
@@ -347,8 +377,8 @@ function riskLabel(score: number): { text: string; color: string } {
 }
 
 function MiniRing({ value, max, color }: { value: number; max: number; color: string }) {
-  const r = 28
-  const stroke = 5
+  const r = 26
+  const stroke = 4
   const circ = 2 * Math.PI * r
   const offset = circ - (value / max) * circ
   const sz = (r + stroke) * 2
@@ -371,6 +401,7 @@ function MiniRing({ value, max, color }: { value: number; max: number; color: st
         strokeDashoffset={offset}
         transform={`rotate(-90 ${sz / 2} ${sz / 2})`}
         style={{ transition: 'stroke-dashoffset 0.6s ease' }}
+        opacity={0.8}
       />
     </svg>
   )
@@ -379,49 +410,39 @@ function MiniRing({ value, max, color }: { value: number; max: number; color: st
 /* ─── Analysis Pipeline ─────────────────────────────────────────── */
 
 const PIPELINE_ICONS: Record<string, React.ReactNode> = {
-  'capture': <CameraIcon size={18} />,
-  'dom-analysis': <CodeIcon size={18} />,
-  'visual-analysis': <ImageIcon size={18} />,
-  'privacy-scan': <ShieldIcon size={18} />,
-  'injection-scan': <AlertIcon size={18} />,
-  'sanitization': <FilterIcon size={18} />,
+  'capture': <CameraIcon size={16} />,
+  'dom-analysis': <CodeIcon size={16} />,
+  'visual-analysis': <ImageIcon size={16} />,
+  'privacy-scan': <ShieldIcon size={16} />,
+  'injection-scan': <AlertIcon size={16} />,
+  'sanitization': <FilterIcon size={16} />,
 }
 
-const STATUS_STYLES: Record<PipelineStatus, { bg: string; border: string; iconBg: string; iconColor: string; glow: string }> = {
+const STATUS_STYLES: Record<PipelineStatus, { iconBg: string; iconColor: string; glow: string }> = {
   idle: {
-    bg: 'var(--bg-card)',
-    border: 'var(--border)',
     iconBg: 'var(--bg-input)',
     iconColor: 'var(--text-muted)',
     glow: 'none',
   },
   active: {
-    bg: 'var(--bg-card)',
-    border: 'var(--accent)',
     iconBg: 'var(--accent-muted)',
     iconColor: 'var(--accent-hover)',
-    glow: '0 0 12px var(--accent-muted)',
+    glow: '0 0 10px var(--accent-muted)',
   },
   complete: {
-    bg: 'var(--bg-card)',
-    border: 'var(--green)',
     iconBg: 'var(--green-muted)',
     iconColor: 'var(--green)',
     glow: 'none',
   },
   warning: {
-    bg: 'var(--bg-card)',
-    border: 'var(--orange)',
     iconBg: 'var(--orange-muted)',
     iconColor: 'var(--orange)',
-    glow: '0 0 12px var(--orange-muted)',
+    glow: 'none',
   },
   error: {
-    bg: 'var(--bg-card)',
-    border: 'var(--red)',
     iconBg: 'var(--red-muted)',
     iconColor: 'var(--red)',
-    glow: '0 0 12px var(--red-muted)',
+    glow: 'none',
   },
 }
 
@@ -442,6 +463,7 @@ function AnalysisPipeline() {
         {mockPipeline.map((step, i) => {
           const s = STATUS_STYLES[step.status]
           const isLast = i === mockPipeline.length - 1
+          const borderColor = step.status === 'active' ? 'var(--accent)' : step.status === 'complete' ? 'var(--green)' : 'var(--border)'
           return (
             <div key={step.id} style={{ display: 'flex', alignItems: 'center', flex: isLast ? '0 0 auto' : '1 1 0', minWidth: 0 }}>
               <div style={{
@@ -453,10 +475,10 @@ function AnalysisPipeline() {
                 flex: '0 0 auto',
               }}>
                 <div style={{
-                  width: 44,
-                  height: 44,
+                  width: 40,
+                  height: 40,
                   borderRadius: '50%',
-                  border: `2px solid ${s.border}`,
+                  border: `1.5px solid ${borderColor}`,
                   background: s.iconBg,
                   display: 'flex',
                   alignItems: 'center',
@@ -472,7 +494,7 @@ function AnalysisPipeline() {
                 <div style={{ textAlign: 'center' }}>
                   <p style={{
                     fontSize: 12,
-                    fontWeight: 600,
+                    fontWeight: 500,
                     color: step.status === 'idle' ? 'var(--text-muted)' : 'var(--text-primary)',
                   }}>
                     {step.label}
@@ -517,8 +539,8 @@ function PulseRing({ color }: { color: string }) {
       position: 'absolute',
       inset: -4,
       borderRadius: '50%',
-      border: `2px solid ${color}`,
-      opacity: 0.4,
+      border: `1.5px solid ${color}`,
+      opacity: 0.3,
       animation: 'pulse-ring 2s ease-out infinite',
     }} />
   )
@@ -533,14 +555,13 @@ function PipelineConnector({ fromStatus, toStatus }: { fromStatus: PipelineStatu
     <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 0 }}>
       <div style={{
         flex: 1,
-        height: 2,
+        height: 1,
         background: active
           ? `linear-gradient(90deg, ${color}, ${_toActive ? color : 'var(--border-light)'})`
           : 'var(--border-light)',
-        borderRadius: 1,
       }} />
       <div style={{ color: active ? color : 'var(--border-light)', flexShrink: 0, lineHeight: 0 }}>
-        <ChevronRightIcon size={14} />
+        <ChevronRightIcon size={12} />
       </div>
     </div>
   )
@@ -613,15 +634,16 @@ function RecentScansTable({ onNavigate, scanResults }: { onNavigate: (page: Page
             <tr>
               {['Website', 'Time', 'Privacy Risk', 'Injection Risk', 'Findings', 'Status', ''].map((h) => (
                 <th key={h} style={{
-                  padding: '10px 16px',
+                  padding: '10px var(--space-lg)',
                   textAlign: 'left',
                   fontSize: 11,
-                  fontWeight: 600,
+                  fontWeight: 500,
                   textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
+                  letterSpacing: '0.08em',
                   color: 'var(--text-muted)',
                   borderBottom: '1px solid var(--border)',
                   whiteSpace: 'nowrap',
+                  fontFamily: 'var(--font-body)',
                 }}>
                   {h}
                 </th>
@@ -654,23 +676,22 @@ function ScanRow({ scan, hovered, onHover }: { scan: RecentScan; hovered: boolea
       onMouseLeave={() => onHover(null)}
       style={{
         background: hovered ? 'var(--bg-card-hover)' : 'transparent',
-        transition: 'background 0.1s',
+        transition: 'background 0.15s ease',
         cursor: 'pointer',
       }}
     >
-      <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+      <td style={{ padding: '12px var(--space-lg)', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
-            width: 30,
-            height: 30,
-            borderRadius: 'var(--radius-sm)',
-            background: 'var(--bg-input)',
-            border: '1px solid var(--border)',
+            width: 28,
+            height: 28,
+            borderRadius: 'var(--radius)',
+            background: 'var(--bg-secondary)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 12,
-            fontWeight: 700,
+            fontSize: 11,
+            fontWeight: 600,
             color: 'var(--text-secondary)',
             flexShrink: 0,
           }}>
@@ -691,21 +712,21 @@ function ScanRow({ scan, hovered, onHover }: { scan: RecentScan; hovered: boolea
         </div>
       </td>
 
-      <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
+      <td style={{ padding: '12px var(--space-lg)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
         <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
           {timeAgo(scan.time)}
         </span>
       </td>
 
-      <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+      <td style={{ padding: '12px var(--space-lg)', borderBottom: '1px solid var(--border)' }}>
         <RiskBar score={scan.privacyScore} level={scan.privacyRisk} />
       </td>
 
-      <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+      <td style={{ padding: '12px var(--space-lg)', borderBottom: '1px solid var(--border)' }}>
         <RiskBar score={scan.injectionScore} level={scan.injectionRisk} />
       </td>
 
-      <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+      <td style={{ padding: '12px var(--space-lg)', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {scan.findings.pii > 0 && (
             <FindingChip count={scan.findings.pii} label="PII" color="var(--orange)" />
@@ -724,14 +745,14 @@ function ScanRow({ scan, hovered, onHover }: { scan: RecentScan; hovered: boolea
         </div>
       </td>
 
-      <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+      <td style={{ padding: '12px var(--space-lg)', borderBottom: '1px solid var(--border)' }}>
         <Badge variant={statusInfo.variant} dot>{statusInfo.label}</Badge>
       </td>
 
-      <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', width: 32 }}>
+      <td style={{ padding: '12px var(--space-lg)', borderBottom: '1px solid var(--border)', width: 32 }}>
         <span style={{
           color: hovered ? 'var(--text-secondary)' : 'transparent',
-          transition: 'color 0.15s',
+          transition: 'color 0.15s ease',
           display: 'flex',
         }}>
           <ExternalLinkIcon size={14} />
@@ -752,7 +773,7 @@ function RiskBar({ score, level }: { score: number; level: RiskLevel }) {
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 100 }}>
       <div style={{
         flex: 1,
-        height: 4,
+        height: 3,
         borderRadius: 2,
         background: 'var(--border)',
         overflow: 'hidden',
@@ -763,10 +784,11 @@ function RiskBar({ score, level }: { score: number; level: RiskLevel }) {
           width: `${Math.min(score, 100)}%`,
           borderRadius: 2,
           background: color,
+          opacity: 0.8,
           transition: 'width 0.4s ease',
         }} />
       </div>
-      <span style={{ fontSize: 12, fontWeight: 600, color, fontVariantNumeric: 'tabular-nums', minWidth: 20, textAlign: 'right' }}>
+      <span style={{ fontSize: 12, fontWeight: 500, color, fontVariantNumeric: 'tabular-nums', minWidth: 20, textAlign: 'right' }}>
         {score}
       </span>
     </div>
@@ -779,13 +801,13 @@ function FindingChip({ count, label, color }: { count: number; label: string; co
       display: 'inline-flex',
       alignItems: 'center',
       gap: 3,
-      padding: '1px 6px',
-      borderRadius: 4,
+      padding: '2px 7px',
+      borderRadius: 'var(--radius-sm)',
       fontSize: 10,
-      fontWeight: 700,
+      fontWeight: 600,
       fontFamily: 'var(--mono)',
       color,
-      background: `color-mix(in srgb, ${color} 12%, transparent)`,
+      background: `color-mix(in srgb, ${color} 10%, transparent)`,
       whiteSpace: 'nowrap',
     }}>
       {count} {label}

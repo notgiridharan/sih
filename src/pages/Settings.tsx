@@ -5,7 +5,7 @@ import { Card } from '../components/ui/Card'
 
 export function Settings() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
       <Panel title="General">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <SettingRow
@@ -91,7 +91,7 @@ export function Settings() {
 
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Badge variant="info" dot>Privacy Agent v0.1</Badge>
+          <Badge variant="info" dot>Sentinel Lens v0.1</Badge>
           <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             All processing is performed locally. No telemetry or external data transmission.
           </p>

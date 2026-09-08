@@ -65,7 +65,7 @@ export function VisualAnalysis({ scanResults, capturedDOM, viewingScan }: Visual
   ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
       {/* Historical scan indicator */}
       {isHistorical && viewingScan && (
         <div style={{
@@ -99,18 +99,18 @@ export function VisualAnalysis({ scanResults, capturedDOM, viewingScan }: Visual
               flexDirection: 'column',
               gap: 2,
               padding: '10px 12px',
-              background: filterCategory === s.key ? `color-mix(in srgb, ${s.color} 15%, var(--bg-card))` : 'var(--bg-card)',
+              background: filterCategory === s.key ? `color-mix(in srgb, ${s.color} 10%, var(--bg-card))` : 'var(--bg-card)',
               borderRadius: 'var(--radius)',
-              border: filterCategory === s.key ? `1px solid ${s.color}` : '1px solid var(--border)',
+              border: filterCategory === s.key ? `1px solid ${s.color}` : '1px solid transparent',
               cursor: 'pointer',
               textAlign: 'left',
               transition: 'all 0.15s',
             }}
           >
-            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600 }}>
+            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
               {s.label}
             </span>
-            <span style={{ fontSize: 20, fontWeight: 700, color: s.count > 0 ? s.color : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ fontSize: 22, fontFamily: 'var(--font-display)', fontWeight: 300, color: s.count > 0 ? s.color : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
               {s.count}
             </span>
           </button>
@@ -924,15 +924,15 @@ function OCRResultsPanel({ scanResults }: { scanResults: ScanResult[] }) {
             {/* Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
               <div style={{ padding: '8px 12px', background: 'var(--bg-input)', borderRadius: 'var(--radius)' }}>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 2 }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 500, fontFamily: 'var(--font-body)', display: 'block', marginBottom: 2 }}>
                   Text Blocks
                 </span>
-                <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ fontSize: 22, fontFamily: 'var(--font-display)', fontWeight: 300, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                   {ocr.blocks.length}
                 </span>
               </div>
               <div style={{ padding: '8px 12px', background: 'var(--bg-input)', borderRadius: 'var(--radius)' }}>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 2 }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 500, fontFamily: 'var(--font-body)', display: 'block', marginBottom: 2 }}>
                   Confidence
                 </span>
                 <span style={{
@@ -945,10 +945,10 @@ function OCRResultsPanel({ scanResults }: { scanResults: ScanResult[] }) {
                 </span>
               </div>
               <div style={{ padding: '8px 12px', background: 'var(--bg-input)', borderRadius: 'var(--radius)' }}>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 2 }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 500, fontFamily: 'var(--font-body)', display: 'block', marginBottom: 2 }}>
                   Characters
                 </span>
-                <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ fontSize: 22, fontFamily: 'var(--font-display)', fontWeight: 300, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                   {ocr.text.length}
                 </span>
               </div>
@@ -1378,7 +1378,7 @@ function RiskAssessmentPanel({ scanResults }: { scanResults: ScanResult[] }) {
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
                     {CATEGORY_LABELS[cat]}
                   </div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: RISK_LEVEL_COLOR[catData.level] }}>
+                  <div style={{ fontSize: 24, fontFamily: 'var(--font-display)', fontWeight: 300, color: RISK_LEVEL_COLOR[catData.level] }}>
                     {catData.score}
                   </div>
                   <div style={{ fontSize: 11, color: RISK_LEVEL_COLOR[catData.level], marginTop: 2 }}>

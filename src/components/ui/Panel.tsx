@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react'
-import { Card } from './Card'
 
 interface PanelProps {
   title: string
@@ -11,23 +10,38 @@ interface PanelProps {
 
 export function Panel({ title, subtitle, action, children, noPadding = false }: PanelProps) {
   return (
-    <Card padding={false}>
+    <section style={{
+      borderRadius: 'var(--radius-lg)',
+      background: 'var(--bg-card)',
+    }}>
       <div style={{
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'baseline',
         justifyContent: 'space-between',
-        padding: '14px 20px',
-        borderBottom: '1px solid var(--border)',
+        padding: 'var(--space-lg)',
+        paddingBottom: 'var(--space-md)',
       }}>
         <div>
-          <h3 style={{ fontSize: 14, fontWeight: 600 }}>{title}</h3>
-          {subtitle && <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{subtitle}</p>}
+          <h3 style={{
+            fontSize: 18,
+            fontWeight: 400,
+            fontFamily: 'var(--font-display)',
+            letterSpacing: '-0.01em',
+          }}>{title}</h3>
+          {subtitle && (
+            <p style={{
+              fontSize: 13,
+              color: 'var(--text-muted)',
+              marginTop: 2,
+              fontFamily: 'var(--font-body)',
+            }}>{subtitle}</p>
+          )}
         </div>
         {action}
       </div>
-      <div style={{ padding: noPadding ? 0 : 20 }}>
+      <div style={{ padding: noPadding ? 0 : `0 var(--space-lg) var(--space-lg)` }}>
         {children}
       </div>
-    </Card>
+    </section>
   )
 }

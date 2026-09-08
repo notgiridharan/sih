@@ -95,9 +95,9 @@ export function PrivacyScanner({ scanResults }: PrivacyScannerProps) {
     .map(([cat]) => cat as PIICategory)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
       {/* Risk distribution */}
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
         {(['critical', 'high', 'medium', 'low'] as RiskLevel[]).map((level) => {
           const rc = RISK_CONFIG[level]
           const count = riskCounts[level]
@@ -114,17 +114,17 @@ export function PrivacyScanner({ scanResults }: PrivacyScannerProps) {
                 gap: 4,
                 padding: '12px 14px',
                 background: active ? rc.bg : 'var(--bg-card)',
-                border: active ? `1px solid ${rc.color}` : '1px solid var(--border)',
+                border: active ? `1px solid ${rc.color}` : '1px solid transparent',
                 borderRadius: 'var(--radius)',
                 cursor: 'pointer',
                 textAlign: 'left',
                 transition: 'all 0.15s',
               }}
             >
-              <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600 }}>
+              <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
                 {rc.label}
               </span>
-              <span style={{ fontSize: 24, fontWeight: 700, color: count > 0 ? rc.color : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+              <span style={{ fontSize: 28, fontFamily: 'var(--font-display)', fontWeight: 300, color: count > 0 ? rc.color : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
                 {count}
               </span>
             </button>
@@ -138,10 +138,9 @@ export function PrivacyScanner({ scanResults }: PrivacyScannerProps) {
           display: 'flex',
           flexWrap: 'wrap',
           gap: 6,
-          padding: '12px 16px',
+          padding: 'var(--space-sm) var(--space-md)',
           background: 'var(--bg-card)',
           borderRadius: 'var(--radius)',
-          border: '1px solid var(--border)',
         }}>
           <button
             onClick={() => setFilterCategory('all')}
@@ -309,7 +308,7 @@ function FindingRow({
         {/* Category + redacted preview */}
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{meta.label}</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{meta.label}</span>
             <span style={{ fontSize: 10, color: 'var(--text-muted)', padding: '1px 5px', background: 'var(--bg-input)', borderRadius: 3 }}>
               {meta.group}
             </span>

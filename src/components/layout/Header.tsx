@@ -29,7 +29,7 @@ export function Header({ activePage, onMenuClick }: HeaderProps) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      padding: '0 20px',
+      padding: '0 var(--space-lg)',
       gap: 16,
       position: 'sticky',
       top: 0,
@@ -50,21 +50,25 @@ export function Header({ activePage, onMenuClick }: HeaderProps) {
         >
           <MenuIcon size={20} />
         </button>
-        <h2 style={{ fontSize: 16, fontWeight: 600 }}>{PAGE_TITLES[activePage]}</h2>
+        <h2 style={{
+          fontSize: 20,
+          fontWeight: 400,
+          fontFamily: 'var(--font-display)',
+          letterSpacing: '-0.01em',
+        }}>{PAGE_TITLES[activePage]}</h2>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
         <div style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          padding: '6px 12px',
+          padding: '6px 14px',
           borderRadius: 'var(--radius)',
           background: 'var(--bg-card)',
-          border: '1px solid var(--border)',
           color: 'var(--text-muted)',
           fontSize: 13,
-          minWidth: 180,
+          minWidth: 160,
         }}>
           <SearchIcon size={14} />
           <span>Search...</span>
@@ -74,20 +78,21 @@ export function Header({ activePage, onMenuClick }: HeaderProps) {
           <button style={{
             background: 'none',
             border: 'none',
-            color: 'var(--text-secondary)',
+            color: 'var(--text-muted)',
             cursor: 'pointer',
             padding: 6,
             borderRadius: 'var(--radius)',
             display: 'flex',
+            transition: 'color 0.15s ease',
           }}>
-            <BellIcon size={18} />
+            <BellIcon size={17} />
           </button>
           <span style={{
             position: 'absolute',
-            top: 4,
-            right: 4,
-            width: 7,
-            height: 7,
+            top: 5,
+            right: 5,
+            width: 6,
+            height: 6,
             borderRadius: '50%',
             background: 'var(--red)',
             border: '1.5px solid var(--bg-secondary)',

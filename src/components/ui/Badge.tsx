@@ -26,21 +26,22 @@ export function Badge({ variant = 'default', children, dot = false }: BadgeProps
         display: 'inline-flex',
         alignItems: 'center',
         gap: 5,
-        padding: '2px 8px',
-        borderRadius: 10,
+        padding: '3px 10px',
+        borderRadius: 'var(--radius)',
         fontSize: 11,
-        fontWeight: 600,
-        letterSpacing: '0.02em',
+        fontWeight: 500,
+        letterSpacing: '0.03em',
         textTransform: 'uppercase',
         color: s.color,
         background: s.bg,
         whiteSpace: 'nowrap',
+        fontFamily: 'var(--font-body)',
       }}
     >
       {dot && (
         <span style={{
-          width: 6,
-          height: 6,
+          width: 5,
+          height: 5,
           borderRadius: '50%',
           background: s.color,
           flexShrink: 0,

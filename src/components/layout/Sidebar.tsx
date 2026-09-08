@@ -76,8 +76,7 @@ export function Sidebar({ activePage, onNavigate, open, onClose }: SidebarProps)
         }}
       >
         <div style={{
-          padding: '16px 20px',
-          borderBottom: '1px solid var(--border)',
+          padding: '20px 20px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -86,21 +85,25 @@ export function Sidebar({ activePage, onNavigate, open, onClose }: SidebarProps)
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               borderRadius: 'var(--radius)',
               background: 'var(--accent-muted)',
-              border: '1px solid var(--accent-border)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'var(--accent-hover)',
+              color: 'var(--accent)',
             }}>
-              <LockIcon size={16} />
+              <LockIcon size={14} />
             </div>
             <div>
-              <h1 style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2 }}>Privacy Agent</h1>
-              <p style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.2 }}>Vision Shield v0.1</p>
+              <h1 style={{
+                fontSize: 15,
+                fontWeight: 400,
+                fontFamily: 'var(--font-display)',
+                lineHeight: 1.2,
+                letterSpacing: '-0.01em',
+              }}>Sentinel Lens</h1>
             </div>
           </div>
           <button
@@ -119,7 +122,7 @@ export function Sidebar({ activePage, onNavigate, open, onClose }: SidebarProps)
           </button>
         </div>
 
-        <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
+        <nav style={{ flex: 1, overflowY: 'auto', padding: '12px 12px' }}>
           {NAV_ITEMS.map((item) => {
             const showSection = item.section && item.section !== lastSection
             if (item.section) lastSection = item.section
@@ -130,12 +133,13 @@ export function Sidebar({ activePage, onNavigate, open, onClose }: SidebarProps)
                 {showSection && (
                   <p style={{
                     fontSize: 10,
-                    fontWeight: 600,
+                    fontWeight: 500,
                     textTransform: 'uppercase',
-                    letterSpacing: '0.08em',
+                    letterSpacing: '0.1em',
                     color: 'var(--text-muted)',
-                    padding: '14px 10px 6px',
+                    padding: '18px 10px 6px',
                     margin: 0,
+                    fontFamily: 'var(--font-body)',
                   }}>
                     {item.section}
                   </p>
@@ -153,11 +157,12 @@ export function Sidebar({ activePage, onNavigate, open, onClose }: SidebarProps)
                     background: active ? 'var(--accent-muted)' : 'transparent',
                     color: active ? 'var(--accent-hover)' : 'var(--text-secondary)',
                     fontSize: 13,
-                    fontWeight: active ? 600 : 400,
-                    fontFamily: 'inherit',
+                    fontWeight: active ? 500 : 400,
+                    fontFamily: 'var(--font-body)',
                     cursor: 'pointer',
                     textAlign: 'left',
-                    transition: 'background 0.1s, color 0.1s',
+                    transition: 'background 0.15s ease, color 0.15s ease',
+                    letterSpacing: '0.01em',
                   }}
                   onMouseEnter={(e) => {
                     if (!active) e.currentTarget.style.background = 'var(--bg-card)'
@@ -175,19 +180,20 @@ export function Sidebar({ activePage, onNavigate, open, onClose }: SidebarProps)
         </nav>
 
         <div style={{
-          padding: '12px 16px',
+          padding: '14px 20px',
           borderTop: '1px solid var(--border)',
           fontSize: 11,
           color: 'var(--text-muted)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{
-              width: 6,
-              height: 6,
+              width: 5,
+              height: 5,
               borderRadius: '50%',
               background: 'var(--green)',
+              opacity: 0.8,
             }} />
-            Local processing active
+            Local processing
           </div>
         </div>
       </aside>

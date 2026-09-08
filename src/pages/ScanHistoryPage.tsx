@@ -91,7 +91,7 @@ export function ScanHistoryPage({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
       {/* Header with counts and clear */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
@@ -220,10 +220,11 @@ export function ScanHistoryPage({
               padding: '8px 20px',
               borderBottom: '1px solid var(--border)',
               fontSize: 11,
-              fontWeight: 600,
+              fontWeight: 500,
               color: 'var(--text-muted)',
               textTransform: 'uppercase',
-              letterSpacing: '0.05em',
+              letterSpacing: '0.08em',
+              fontFamily: 'var(--font-body)',
             }}>
               <span>Site</span>
               <span>Risk</span>
