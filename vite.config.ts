@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
       ? {
           outDir: 'dist-extension',
           rollupOptions: {
-            input: { index: 'index.html', widget: 'widget.html', newtab: 'newtab.html' },
+            input: { index: 'index.html', widget: 'widget.html' },
           },
         }
       : {},
