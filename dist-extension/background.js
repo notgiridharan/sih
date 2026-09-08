@@ -65,7 +65,67 @@ chrome.action.onClicked.addListener(async (tab) => {
   console.warn('[Sentinel] Could not inject widget on this page')
 })
 
+// DOM action commands forwarded from the widget iframe to the content script on the active tab
+const DOM_COMMANDS = [
+  'DOM_CLICK', 'DOM_FILL', 'DOM_TYPE', 'DOM_FOCUS', 'DOM_SCROLL',
+  'DOM_SELECT', 'DOM_SEND_KEYS', 'DOM_ELEMENT_EXISTS', 'DOM_GET_ATTRIBUTE', 'DOM_IS_PASSWORD',
+]
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Route DOM commands to the active tab's content script
+  if (DOM_COMMANDS.includes(msg.type)) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs[0]?.id) {
+        sendResponse({ success: false, error: 'No active tab', detail: null })
+        return
+      }
+      chrome.tabs.sendMessage(tabs[0].id, msg, (response) => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ success: false, error: chrome.runtime.lastError.message, detail: null })
+          return
+        }
+        sendResponse(response ?? { success: false, error: 'No response from content script', detail: null })
+      })
+    })
+    return true
+  }
+
+  // Navigate the active tab to a URL
+  if (msg.type === 'NAVIGATE_TAB') {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs[0]?.id) {
+        sendResponse({ success: false, error: 'No active tab', detail: null })
+        return
+      }
+      chrome.tabs.update(tabs[0].id, { url: msg.url }, () => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ success: false, error: chrome.runtime.lastError.message, detail: null })
+          return
+        }
+        sendResponse({ success: true, error: null, detail: `Navigated to ${msg.url}` })
+      })
+    })
+    return true
+  }
+
+  // Go back in the active tab's history
+  if (msg.type === 'GO_BACK') {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs[0]?.id) {
+        sendResponse({ success: false, error: 'No active tab', detail: null })
+        return
+      }
+      chrome.tabs.goBack(tabs[0].id, () => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ success: false, error: chrome.runtime.lastError.message, detail: null })
+          return
+        }
+        sendResponse({ success: true, error: null, detail: 'Navigated back' })
+      })
+    })
+    return true
+  }
+
   if (msg.type === 'CAPTURE_SCREENSHOT') {
     chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
       if (chrome.runtime.lastError) {

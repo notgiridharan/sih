@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import type { ActionPlan, AgentSession } from '../../types/agent'
 import { PromptProcessor } from '../../services/prompt-processor'
 import type { ProgressEvent, PageSourceProvider } from '../../services/prompt-processor'
+import { ActionExecutor, MockDOMBridge } from '../../services/action-executor'
+import { isExtension, ExtensionDOMBridge } from '../../services/extension-bridge'
 
 // ─── Widget-local state type ──────────────────────────────────────────────
 
@@ -469,28 +471,53 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
     setAgentState('acting')
     setActivityDetail('')
 
-    if (plan) {
-      addSystem(`Executing ${plan.steps.length} action${plan.steps.length !== 1 ? 's' : ''}...`)
-      // Phase 1: executor is mocked — simulate with real step timing
-      await new Promise<void>(resolve => setTimeout(resolve, Math.min(plan.estimatedDurationMs * 0.3, 2000)))
-    } else {
-      addSystem('Executing...')
-      await new Promise<void>(resolve => setTimeout(resolve, 1200))
+    if (!plan) {
+      addSystem('No plan to execute.')
+      setAgentState('ready')
+      return
     }
 
-    if (abortControllerRef.current?.signal.aborted) return
+    addSystem(`Executing ${plan.steps.length} action${plan.steps.length !== 1 ? 's' : ''}...`)
 
-    const duration = Date.now() - taskStartRef.current
-    const completedActions = plan
-      ? plan.steps.map(s => s.action.description)
-      : ['Analyzed page structure', 'Identified target elements', 'Executed action', 'Verified result']
-
-    setAgentState('completed')
-    setCompletion({
-      summary: `Completed: "${lastPromptRef.current.slice(0, 60)}${lastPromptRef.current.length > 60 ? '…' : ''}"`,
-      actions: completedActions,
-      durationMs: duration,
+    const bridge = isExtension() ? new ExtensionDOMBridge() : new MockDOMBridge()
+    const allSteps = new Set(plan.steps.map(s => s.stepNumber))
+    const executor = new ActionExecutor({
+      bridge,
+      signal: abortControllerRef.current?.signal,
+      approvedSteps: allSteps,
     })
+
+    executor.onExecution((record) => {
+      const icon = record.result.status === 'completed' ? 'OK' : 'FAIL'
+      const errMsg = record.result.error ? ` — ${record.result.error}` : ''
+      addSystem(`[${icon}] Step ${record.stepNumber}: ${record.action.description}${errMsg}`)
+      setActivityDetail(`Step ${record.stepNumber}/${plan.steps.length}: ${record.action.description}`)
+    })
+
+    try {
+      const result = await executor.executePlan(plan)
+
+      if (abortControllerRef.current?.signal.aborted) return
+
+      const duration = Date.now() - taskStartRef.current
+      const completedActions = result.records
+        .filter(r => r.result.status === 'completed')
+        .map(r => r.action.description)
+      const failedCount = result.records.filter(r => r.result.status === 'failed').length
+
+      setAgentState('completed')
+      setCompletion({
+        summary: result.status === 'completed'
+          ? `Completed: "${lastPromptRef.current.slice(0, 60)}${lastPromptRef.current.length > 60 ? '…' : ''}"`
+          : `Stopped (${failedCount} failed): "${lastPromptRef.current.slice(0, 50)}…"`,
+        actions: completedActions.length > 0 ? completedActions : ['No actions completed'],
+        durationMs: duration,
+      })
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setErrorMessage(err instanceof Error ? err.message : 'Execution failed')
+      setAgentState('error')
+    }
   }, [addSystem])
 
   const handleDecline = useCallback(() => {

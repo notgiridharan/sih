@@ -327,7 +327,235 @@
     }
   }
 
-  // ─── Existing message handlers ─────────────────────────────────────────────
+  // ─── Element finder ──────────────────────────────────────────────────────
+  // Supports comma-separated selectors and :has-text("...") pseudo-selector
+
+  function findElement(selectorStr) {
+    if (!selectorStr) return null
+    const selectors = selectorStr.split(',').map(s => s.trim())
+
+    for (const sel of selectors) {
+      const textMatch = sel.match(/^(.+?):has-text\("(.+?)"\)$/)
+      if (textMatch) {
+        const [, baseSelector, text] = textMatch
+        try {
+          const elements = document.querySelectorAll(baseSelector)
+          for (const el of elements) {
+            if (el.textContent?.trim().toLowerCase().includes(text.toLowerCase())) return el
+          }
+        } catch { /* invalid selector */ }
+        continue
+      }
+
+      try {
+        const el = document.querySelector(sel)
+        if (el) return el
+      } catch { /* invalid selector */ }
+    }
+
+    return null
+  }
+
+  // ─── DOM action handlers ──────────────────────────────────────────────────
+
+  function handleDOMClick(msg, sendResponse) {
+    try {
+      const el = findElement(msg.selector)
+      if (!el) {
+        sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
+        return
+      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.focus()
+      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }))
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+      sendResponse({ success: true, error: null, detail: `Clicked ${msg.selector}` })
+    } catch (err) {
+      sendResponse({ success: false, error: err.message, detail: null })
+    }
+  }
+
+  function handleDOMFill(msg, sendResponse) {
+    try {
+      const el = findElement(msg.selector)
+      if (!el) {
+        sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
+        return
+      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.focus()
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype, 'value'
+      )?.set || Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype, 'value'
+      )?.set
+      if (nativeInputValueSetter) {
+        nativeInputValueSetter.call(el, msg.value ?? '')
+      } else {
+        el.value = msg.value ?? ''
+      }
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      el.dispatchEvent(new Event('change', { bubbles: true }))
+      sendResponse({ success: true, error: null, detail: `Filled ${msg.selector}` })
+    } catch (err) {
+      sendResponse({ success: false, error: err.message, detail: null })
+    }
+  }
+
+  function handleDOMType(msg, sendResponse) {
+    try {
+      const el = findElement(msg.selector)
+      if (!el) {
+        sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
+        return
+      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.focus()
+      const text = msg.text ?? ''
+      for (const char of text) {
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }))
+        el.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }))
+        const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+          || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+        if (nativeSetter) {
+          nativeSetter.call(el, (el.value || '') + char)
+        } else {
+          el.value = (el.value || '') + char
+        }
+        el.dispatchEvent(new Event('input', { bubbles: true }))
+        el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }))
+      }
+      sendResponse({ success: true, error: null, detail: `Typed into ${msg.selector}` })
+    } catch (err) {
+      sendResponse({ success: false, error: err.message, detail: null })
+    }
+  }
+
+  function handleDOMFocus(msg, sendResponse) {
+    try {
+      const el = findElement(msg.selector)
+      if (!el) {
+        sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
+        return
+      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.focus()
+      sendResponse({ success: true, error: null, detail: `Focused ${msg.selector}` })
+    } catch (err) {
+      sendResponse({ success: false, error: err.message, detail: null })
+    }
+  }
+
+  function handleDOMScroll(msg, sendResponse) {
+    try {
+      const amount = msg.amount ?? 400
+      const direction = msg.direction === 'up' ? -1 : 1
+      window.scrollBy({ top: direction * amount, behavior: 'smooth' })
+      sendResponse({ success: true, error: null, detail: `Scrolled ${msg.direction} by ${amount}px` })
+    } catch (err) {
+      sendResponse({ success: false, error: err.message, detail: null })
+    }
+  }
+
+  function handleDOMSelect(msg, sendResponse) {
+    try {
+      const el = findElement(msg.selector)
+      if (!el) {
+        sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
+        return
+      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.value = msg.value
+      el.dispatchEvent(new Event('change', { bubbles: true }))
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      sendResponse({ success: true, error: null, detail: `Selected "${msg.value}" in ${msg.selector}` })
+    } catch (err) {
+      sendResponse({ success: false, error: err.message, detail: null })
+    }
+  }
+
+  function handleDOMSendKeys(msg, sendResponse) {
+    try {
+      const target = document.activeElement || document.body
+      const keys = msg.keys ?? ''
+      const keyMap = {
+        'Enter': { key: 'Enter', code: 'Enter', keyCode: 13 },
+        'Tab': { key: 'Tab', code: 'Tab', keyCode: 9 },
+        'Escape': { key: 'Escape', code: 'Escape', keyCode: 27 },
+        'Backspace': { key: 'Backspace', code: 'Backspace', keyCode: 8 },
+        'ArrowDown': { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
+        'ArrowUp': { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
+        'Space': { key: ' ', code: 'Space', keyCode: 32 },
+      }
+      const mapped = keyMap[keys]
+      if (mapped) {
+        target.dispatchEvent(new KeyboardEvent('keydown', { ...mapped, bubbles: true }))
+        target.dispatchEvent(new KeyboardEvent('keyup', { ...mapped, bubbles: true }))
+      } else {
+        for (const char of keys) {
+          target.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }))
+          target.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }))
+          target.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }))
+        }
+      }
+      sendResponse({ success: true, error: null, detail: `Sent keys: ${keys}` })
+    } catch (err) {
+      sendResponse({ success: false, error: err.message, detail: null })
+    }
+  }
+
+  function handleDOMElementExists(msg, sendResponse) {
+    try {
+      const el = findElement(msg.selector)
+      sendResponse({ success: !!el, error: null, detail: el ? 'Element found' : 'Element not found' })
+    } catch (err) {
+      sendResponse({ success: false, error: err.message, detail: null })
+    }
+  }
+
+  function handleDOMGetAttribute(msg, sendResponse) {
+    try {
+      const el = findElement(msg.selector)
+      if (!el) {
+        sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
+        return
+      }
+      const value = el.getAttribute(msg.attr)
+      sendResponse({ success: true, error: null, detail: value })
+    } catch (err) {
+      sendResponse({ success: false, error: err.message, detail: null })
+    }
+  }
+
+  function handleDOMIsPassword(msg, sendResponse) {
+    try {
+      const el = findElement(msg.selector)
+      if (!el) {
+        sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
+        return
+      }
+      const isPassword = el.type === 'password' || el.getAttribute('type') === 'password'
+      sendResponse({ success: isPassword, error: null, detail: isPassword ? 'Password field' : 'Not a password field' })
+    } catch (err) {
+      sendResponse({ success: false, error: err.message, detail: null })
+    }
+  }
+
+  // ─── Message handlers ─────────────────────────────────────────────────────
+
+  const DOM_HANDLERS = {
+    'DOM_CLICK': handleDOMClick,
+    'DOM_FILL': handleDOMFill,
+    'DOM_TYPE': handleDOMType,
+    'DOM_FOCUS': handleDOMFocus,
+    'DOM_SCROLL': handleDOMScroll,
+    'DOM_SELECT': handleDOMSelect,
+    'DOM_SEND_KEYS': handleDOMSendKeys,
+    'DOM_ELEMENT_EXISTS': handleDOMElementExists,
+    'DOM_GET_ATTRIBUTE': handleDOMGetAttribute,
+    'DOM_IS_PASSWORD': handleDOMIsPassword,
+  }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     console.log('[Sentinel] Content script received message:', msg.type)
@@ -353,6 +581,12 @@
 
     if (msg.type === 'PING') {
       sendResponse({ ok: true })
+      return true
+    }
+
+    const handler = DOM_HANDLERS[msg.type]
+    if (handler) {
+      handler(msg, sendResponse)
       return true
     }
   })

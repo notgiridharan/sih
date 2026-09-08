@@ -43,6 +43,10 @@ export interface DOMBridge {
   type(selector: string, text: string): Promise<DOMOperationResult>
   fill(selector: string, value: string): Promise<DOMOperationResult>
   navigate(url: string): Promise<DOMOperationResult>
+  goBack(): Promise<DOMOperationResult>
+  scroll(direction: 'up' | 'down', amount?: number): Promise<DOMOperationResult>
+  select(selector: string, value: string): Promise<DOMOperationResult>
+  sendKeys(keys: string): Promise<DOMOperationResult>
   elementExists(selector: string): Promise<boolean>
   getElementAttribute(selector: string, attr: string): Promise<string | null>
   isPasswordField(selector: string): Promise<boolean>
@@ -76,6 +80,26 @@ export class MockDOMBridge implements DOMBridge {
   async navigate(url: string): Promise<DOMOperationResult> {
     this.log.push({ method: 'navigate', args: [url] })
     return { success: true, error: null, detail: `Navigated to ${url}` }
+  }
+
+  async goBack(): Promise<DOMOperationResult> {
+    this.log.push({ method: 'goBack', args: [] })
+    return { success: true, error: null, detail: 'Navigated back' }
+  }
+
+  async scroll(direction: 'up' | 'down', amount?: number): Promise<DOMOperationResult> {
+    this.log.push({ method: 'scroll', args: [direction, amount] })
+    return { success: true, error: null, detail: `Scrolled ${direction}` }
+  }
+
+  async select(selector: string, value: string): Promise<DOMOperationResult> {
+    this.log.push({ method: 'select', args: [selector, value] })
+    return { success: true, error: null, detail: `Selected ${value} in ${selector}` }
+  }
+
+  async sendKeys(keys: string): Promise<DOMOperationResult> {
+    this.log.push({ method: 'sendKeys', args: [keys] })
+    return { success: true, error: null, detail: `Sent keys: ${keys}` }
   }
 
   async elementExists(selector: string): Promise<boolean> {
@@ -359,6 +383,17 @@ export class ActionExecutor {
         return this.bridge.fill(action.target!.selector, action.value ?? '')
       case 'navigate':
         return this.bridge.navigate(action.value!)
+      case 'go_back':
+        return this.bridge.goBack()
+      case 'scroll': {
+        const direction = (action.value === 'up' ? 'up' : 'down') as 'up' | 'down'
+        const amount = action.target?.attributes['amount'] ? parseInt(action.target.attributes['amount'], 10) : undefined
+        return this.bridge.scroll(direction, amount)
+      }
+      case 'select':
+        return this.bridge.select(action.target!.selector, action.value ?? '')
+      case 'send_keys':
+        return this.bridge.sendKeys(action.value ?? '')
       case 'wait':
         return this.executeWait(action)
       default:
@@ -367,9 +402,9 @@ export class ActionExecutor {
   }
 
   private async executeWait(action: Action): Promise<DOMOperationResult> {
-    const ms = action.timeoutMs
+    const ms = Math.min(action.value ? parseInt(action.value, 10) || action.timeoutMs : action.timeoutMs, 10000)
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(resolve, Math.min(ms, 10000))
+      const timer = setTimeout(resolve, ms)
       if (this.signal?.aborted) { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); return }
       this.signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')) }, { once: true })
     })

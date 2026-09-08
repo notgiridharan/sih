@@ -367,6 +367,31 @@ const SCENARIOS: ScenarioMatch[] = [
     },
   },
   {
+    id: 'scroll-page',
+    keywords: /\b(scroll)\b\s*(up|down|to\s+(?:top|bottom))?/i,
+    buildPlan(request) {
+      const match = /\b(scroll)\b\s*(up|down|to\s+top|to\s+bottom)?/i.exec(request.prompt)
+      const raw = match?.[2]?.trim().toLowerCase() ?? 'down'
+      const direction = raw.includes('up') || raw.includes('top') ? 'up' : 'down'
+
+      return makePlan([
+        makeStep(1, makeAction('scroll', `Scroll ${direction}`, {
+          value: direction,
+          targetDescription: `Scroll page ${direction}`,
+        }), `Scrolling the page ${direction}`)
+      ], `Scrolling the page ${direction}.`, request, { riskLevel: 'low' })
+    },
+  },
+  {
+    id: 'go-back',
+    keywords: /\b(go\s*back|back\s*page|previous\s*page|navigate\s*back)\b/i,
+    buildPlan(request) {
+      return makePlan([
+        makeStep(1, makeAction('go_back', 'Navigate back to previous page'), 'Going back to the previous page in browser history'),
+      ], 'Navigating back to the previous page.', request, { riskLevel: 'low' })
+    },
+  },
+  {
     id: 'click-element',
     keywords: /\b(click|press|tap|select|open)\b\s+(?:the\s+|on\s+)?["']?(.+?)["']?\s*$/i,
     buildPlan(request) {
