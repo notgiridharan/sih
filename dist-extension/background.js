@@ -1,6 +1,16 @@
 // Extension icon click → inject/toggle the Sentinel floating widget in the active tab.
 console.log('[Sentinel] Background service worker loaded')
 
+// Open the Sentinel side panel (works on any page including restricted ones)
+async function openSidePanel(tabId) {
+  try {
+    await chrome.sidePanel.open({ tabId })
+    console.log('[Sentinel] Side panel opened for tab:', tabId)
+  } catch (err) {
+    console.warn('[Sentinel] Side panel failed:', err.message)
+  }
+}
+
 chrome.action.onClicked.addListener(async (tab) => {
   console.log('[Sentinel] Icon clicked on tab:', tab.id, tab.url)
 
@@ -12,6 +22,21 @@ chrome.action.onClicked.addListener(async (tab) => {
   // New Tab override page has Sentinel built-in — widget is always visible
   if (tab.url?.includes('newtab.html')) {
     console.log('[Sentinel] New Tab page — widget already visible')
+    return
+  }
+
+  // Chrome internal pages (chrome://, about:, devtools://) permanently block content
+  // script injection — open the side panel directly instead
+  const isRestricted = !tab.url
+    || tab.url.startsWith('chrome://')
+    || tab.url.startsWith('about:')
+    || tab.url.startsWith('devtools://')
+    || tab.url.startsWith('edge://')
+    || tab.url.startsWith('chrome-extension://')
+
+  if (isRestricted) {
+    console.log('[Sentinel] Restricted page — opening side panel')
+    await openSidePanel(tab.id)
     return
   }
 
@@ -37,10 +62,13 @@ chrome.action.onClicked.addListener(async (tab) => {
     })
     // Allow script to initialize its message listeners
     await new Promise(resolve => setTimeout(resolve, 80))
-    await tryToggle()
+    if (await tryToggle()) return
   } catch (err) {
-    console.log('[Sentinel] Injection failed — restricted page:', err.message)
+    console.log('[Sentinel] Injection failed:', err.message)
   }
+
+  // Last resort for any page where injection unexpectedly failed — side panel
+  await openSidePanel(tab.id)
 })
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

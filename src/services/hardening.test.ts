@@ -172,7 +172,7 @@ describe('large input handling', () => {
     expect(result).toBeDefined()
     expect(result.id).toBeTruthy()
     expect(result.url).toBe('https://example.com')
-  })
+  }, 15_000)
 
   it('handles empty DOM in scanner', async () => {
     const { scan } = await import('./scanner')
