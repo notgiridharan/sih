@@ -19,12 +19,6 @@ chrome.action.onClicked.addListener(async (tab) => {
     return
   }
 
-  // New Tab override page has Sentinel built-in — widget is always visible
-  if (tab.url?.includes('newtab.html')) {
-    console.log('[Sentinel] New Tab page — widget already visible')
-    return
-  }
-
   // Chrome internal pages (chrome://, about:, devtools://) permanently block content
   // script injection — open the side panel directly instead
   const isRestricted = !tab.url
@@ -67,8 +61,8 @@ chrome.action.onClicked.addListener(async (tab) => {
     console.log('[Sentinel] Injection failed:', err.message)
   }
 
-  // Last resort for any page where injection unexpectedly failed — side panel
-  await openSidePanel(tab.id)
+  // Injection failed on a normal page — log and give up gracefully (no side panel)
+  console.warn('[Sentinel] Could not inject widget on this page')
 })
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
