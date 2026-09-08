@@ -35,16 +35,21 @@ for (const f of wasmFiles) {
   }
 }
 
-// Copy GLiNER model assets if present (downloaded separately via scripts/download-gliner-model.js)
+// Copy ML model assets (GLiNER + PP-OCR) if present.
+// Download them first with:
+//   node scripts/download-gliner-model.js
+//   node scripts/download-ppocr-models.js
 const modelSrc = resolve(ext, 'assets', 'models')
 const modelDst = resolve(assetsDir, 'models')
 if (existsSync(modelSrc)) {
   if (!existsSync(modelDst)) mkdirSync(modelDst, { recursive: true })
   cpSync(modelSrc, modelDst, { recursive: true })
-  console.log('Copied GLiNER model assets to dist-extension/assets/models/')
+  console.log('Copied ML model assets to dist-extension/assets/models/')
 } else {
-  console.log('No GLiNER model found at extension/assets/models/ — ML PII detection will fall back to regex.')
-  console.log('Run: node scripts/download-gliner-model.js')
+  console.log('No ML models found at extension/assets/models/ — OCR and ML PII detection will use fallbacks.')
+  console.log('To enable:')
+  console.log('  node scripts/download-ppocr-models.js   # PP-OCRv5 for screenshot OCR')
+  console.log('  node scripts/download-gliner-model.js   # GLiNER-small for ML PII detection')
 }
 
 console.log('Extension build complete: dist-extension/')

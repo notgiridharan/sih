@@ -1,31 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { OCRResult } from '../types/scan'
 
-vi.mock('tesseract.js', () => ({
-  createWorker: vi.fn().mockResolvedValue({
-    recognize: vi.fn().mockResolvedValue({
-      data: {
-        text: 'Hello World',
-        confidence: 92,
-        blocks: [
-          {
-            paragraphs: [
-              {
-                lines: [
-                  {
-                    words: [
-                      { text: 'Hello', confidence: 95, bbox: { x0: 10, y0: 20, x1: 60, y1: 40 } },
-                      { text: 'World', confidence: 89, bbox: { x0: 70, y0: 20, x1: 120, y1: 40 } },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    }),
-    terminate: vi.fn().mockResolvedValue(undefined),
-  }),
+// Mock PP-OCR engine so tests run without real ONNX models or image data.
+vi.mock('./ppocr/ppocr-engine', () => ({
+  initPPOCR: vi.fn(),
+  runPPOCR: vi.fn().mockResolvedValue({
+    text: 'Hello World',
+    confidence: 0.92,
+    blocks: [
+      { text: 'Hello', confidence: 0.95, boundingBox: { x: 10, y: 20, width: 50, height: 20 } },
+      { text: 'World', confidence: 0.89, boundingBox: { x: 70, y: 20, width: 50, height: 20 } },
+    ],
+    status: 'complete',
+    processingTimeMs: 42,
+  } satisfies OCRResult),
 }))
 
 beforeEach(() => {
@@ -64,12 +52,16 @@ describe('OCR service', () => {
     expect(result1).toBe(result2)
   })
 
-  it('terminateOCR cleans up worker', async () => {
+  it('terminateOCR clears cache', async () => {
     const { runOCR, terminateOCR } = await import('./ocr')
-    await runOCR('data:image/png;base64,test')
+    const screenshot = 'data:image/png;base64,test'
+    const r1 = await runOCR(screenshot)
     await terminateOCR()
-    const result = await runOCR('data:image/png;base64,test')
-    expect(result.status).toBe('complete')
+    // After termination a fresh call re-runs inference and returns a new object
+    const r2 = await runOCR(screenshot)
+    // Both should be complete (mock always returns complete)
+    expect(r1.status).toBe('complete')
+    expect(r2.status).toBe('complete')
   })
 })
 

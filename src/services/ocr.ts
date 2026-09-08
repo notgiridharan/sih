@@ -1,35 +1,31 @@
-import type { OCRResult, OCRBlock } from '../types/scan'
+/**
+ * OCR service — backed by PP-OCRv5 (local ONNX inference).
+ *
+ * Public API is identical to the previous Tesseract.js implementation so
+ * nothing else in the codebase needs to change.
+ *
+ * PP-OCRv5 is a two-stage pipeline:
+ *   Detection  — DBNet finds text bounding boxes in the screenshot
+ *   Recognition — CRNN reads the text inside each box
+ *
+ * Both models run via ONNX Runtime Web (WASM provider) with no network calls.
+ * When the model files are absent the service returns a `skipped` result so
+ * the wider scan never fails because of missing OCR assets.
+ */
 
-let workerInstance: import('tesseract.js').Worker | null = null
-let workerPromise: Promise<import('tesseract.js').Worker> | null = null
-let lastScreenshotHash: string | null = null
+import type { OCRResult } from '../types/scan'
+import { runPPOCR, initPPOCR } from './ppocr/ppocr-engine'
+
+// ---------------------------------------------------------------------------
+// Result caching — avoids re-running inference on the same screenshot
+// ---------------------------------------------------------------------------
+
+let lastHash: string | null = null
 let cachedResult: OCRResult | null = null
 let idleTimer: ReturnType<typeof setTimeout> | null = null
-let activeRecognition: AbortController | null = null
 
 const IDLE_TIMEOUT_MS = 60_000
 const MAX_SCREENSHOT_BYTES = 5_000_000
-
-function resetIdleTimer(): void {
-  if (idleTimer) clearTimeout(idleTimer)
-  idleTimer = setTimeout(() => { terminateOCR() }, IDLE_TIMEOUT_MS)
-}
-
-async function getWorker(): Promise<import('tesseract.js').Worker> {
-  if (workerInstance) return workerInstance
-  if (workerPromise) return workerPromise
-
-  workerPromise = (async () => {
-    const Tesseract = await import('tesseract.js')
-    const worker = await Tesseract.createWorker('eng', undefined, {
-      logger: () => {},
-    })
-    workerInstance = worker
-    return worker
-  })()
-
-  return workerPromise
-}
 
 function hashScreenshot(dataUrl: string): string {
   let hash = 0
@@ -40,13 +36,31 @@ function hashScreenshot(dataUrl: string): string {
   return `${hash}_${dataUrl.length}`
 }
 
+function resetIdleTimer(): void {
+  if (idleTimer) clearTimeout(idleTimer)
+  idleTimer = setTimeout(() => { terminateOCR() }, IDLE_TIMEOUT_MS)
+}
+
+// ---------------------------------------------------------------------------
+// Abort-controller management (only one active inference at a time)
+// ---------------------------------------------------------------------------
+
+let activeController: AbortController | null = null
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/** Warm-up the PP-OCR models in the background.  Safe to call multiple times. */
+export function warmupOCR(): void {
+  initPPOCR()
+}
+
 export async function runOCR(
   screenshotDataUrl: string,
   signal?: AbortSignal,
 ): Promise<OCRResult> {
-  if (signal?.aborted) {
-    return createAbortedResult()
-  }
+  if (signal?.aborted) return createAbortedResult()
 
   if (screenshotDataUrl.length > MAX_SCREENSHOT_BYTES) {
     return {
@@ -60,125 +74,51 @@ export async function runOCR(
   }
 
   const hash = hashScreenshot(screenshotDataUrl)
-  if (hash === lastScreenshotHash && cachedResult) {
-    return cachedResult
-  }
+  if (hash === lastHash && cachedResult) return cachedResult
 
-  if (activeRecognition) {
-    activeRecognition.abort()
-    activeRecognition = null
+  // Cancel any in-flight inference
+  if (activeController) {
+    activeController.abort()
+    activeController = null
   }
 
   const controller = new AbortController()
-  activeRecognition = controller
+  activeController = controller
 
+  // Propagate external abort into our local controller
   if (signal) {
+    if (signal.aborted) { controller.abort(); return createAbortedResult() }
     signal.addEventListener('abort', () => controller.abort(), { once: true })
   }
 
-  const start = performance.now()
-
   try {
-    const worker = await getWorker()
+    const result = await runPPOCR(screenshotDataUrl, controller.signal)
 
-    if (controller.signal.aborted) {
-      return createAbortedResult()
+    if (controller.signal.aborted) return createAbortedResult()
+
+    if (result.status === 'complete') {
+      lastHash = hash
+      cachedResult = result
+      resetIdleTimer()
     }
 
-    const { data } = await worker.recognize(screenshotDataUrl)
-
-    if (controller.signal.aborted) {
-      return createAbortedResult()
-    }
-
-    const blocks: OCRBlock[] = []
-    if (data.blocks) {
-      for (const block of data.blocks) {
-        for (const paragraph of block.paragraphs) {
-          for (const line of paragraph.lines) {
-            for (const word of line.words) {
-              if (!word.text.trim()) continue
-              blocks.push({
-                text: word.text,
-                confidence: word.confidence / 100,
-                boundingBox: {
-                  x: word.bbox.x0,
-                  y: word.bbox.y0,
-                  width: word.bbox.x1 - word.bbox.x0,
-                  height: word.bbox.y1 - word.bbox.y0,
-                },
-              })
-            }
-          }
-        }
-      }
-    }
-
-    const result: OCRResult = {
-      text: data.text || '',
-      confidence: (data.confidence ?? 0) / 100,
-      blocks,
-      status: 'complete',
-      processingTimeMs: Math.round(performance.now() - start),
-    }
-
-    lastScreenshotHash = hash
-    cachedResult = result
-    resetIdleTimer()
     return result
-  } catch (err) {
-    if (controller.signal.aborted) {
-      return createAbortedResult()
-    }
-    return {
-      text: '',
-      confidence: 0,
-      blocks: [],
-      status: 'error',
-      error: err instanceof Error ? err.message : 'OCR processing failed',
-      processingTimeMs: Math.round(performance.now() - start),
-    }
   } finally {
-    if (activeRecognition === controller) {
-      activeRecognition = null
-    }
+    if (activeController === controller) activeController = null
   }
 }
 
 export async function terminateOCR(): Promise<void> {
-  if (idleTimer) {
-    clearTimeout(idleTimer)
-    idleTimer = null
-  }
-  if (activeRecognition) {
-    activeRecognition.abort()
-    activeRecognition = null
-  }
-  if (workerInstance) {
-    await workerInstance.terminate()
-    workerInstance = null
-  }
-  workerPromise = null
-  lastScreenshotHash = null
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null }
+  if (activeController) { activeController.abort(); activeController = null }
+  lastHash = null
   cachedResult = null
 }
 
 export function createSkippedResult(): OCRResult {
-  return {
-    text: '',
-    confidence: 0,
-    blocks: [],
-    status: 'skipped',
-    processingTimeMs: 0,
-  }
+  return { text: '', confidence: 0, blocks: [], status: 'skipped', processingTimeMs: 0 }
 }
 
 function createAbortedResult(): OCRResult {
-  return {
-    text: '',
-    confidence: 0,
-    blocks: [],
-    status: 'skipped',
-    processingTimeMs: 0,
-  }
+  return { text: '', confidence: 0, blocks: [], status: 'skipped', processingTimeMs: 0 }
 }
