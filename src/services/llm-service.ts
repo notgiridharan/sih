@@ -162,9 +162,40 @@ const SCENARIOS: ScenarioMatch[] = [
     buildPlan(request) {
       const ctx = request.sanitizedContext
       const loginLink = findLinkByText(ctx, /log\s*in|sign\s*in/i)
-      const emailField = findInputByType(ctx, 'email|text') ?? 'input[name="email"]'
-      const passwordField = 'input[type="password"]'
-      const submitBtn = findButtonText(ctx) ?? 'Login'
+
+      // Broad multi-selector fallback covers most real-world login forms
+      const emailFromCtx = findInputByType(ctx, 'email|text')
+      const emailField = emailFromCtx
+        ?? [
+          'input[type="email"]',
+          'input[name*="email" i]', 'input[id*="email" i]',
+          'input[placeholder*="email" i]',
+          'input[name*="mobile" i]', 'input[name*="phone" i]',
+          'input[name*="username" i]', 'input[name*="user" i]',
+          'input[name*="login" i]', 'input[id*="username" i]',
+          'input[autocomplete="email"]', 'input[autocomplete="username"]',
+          'input[type="text"]',
+        ].join(', ')
+
+      const passwordField = [
+        'input[type="password"]',
+        'input[name*="password" i]', 'input[id*="password" i]',
+        'input[autocomplete="current-password"]',
+      ].join(', ')
+
+      // Submit button: try common text labels and fallback to type=submit
+      const submitSelector = [
+        'button[type="submit"]',
+        'input[type="submit"]',
+        'button:has-text("Sign In")',
+        'button:has-text("Sign in")',
+        'button:has-text("Login")',
+        'button:has-text("Log In")',
+        'button:has-text("Log in")',
+        'button:has-text("Continue")',
+        'button:has-text("Next")',
+        '[role="button"]:has-text("Sign In")',
+      ].join(', ')
 
       const steps: ActionPlanStep[] = []
       let step = 1
@@ -181,28 +212,14 @@ const SCENARIOS: ScenarioMatch[] = [
         step++
       }
 
-      steps.push(makeStep(step, makeAction('focus', 'Focus email/username field', {
+      steps.push(makeStep(step, makeAction('fill', 'Fill email/username field with user-provided value', {
         selector: emailField,
         tag: 'input',
-        targetDescription: 'Email or username input field',
-      }), 'Focusing the email/username input field', loginLink ? [step - 1] : []))
-      step++
-
-      steps.push(makeStep(step, makeAction('fill', 'Fill email field with user-provided value', {
-        selector: emailField,
-        tag: 'input',
-        targetDescription: 'Email input field',
+        targetDescription: 'Email, phone, or username input field',
         valueSource: 'user-provided',
         requiresApproval: true,
-      }), 'Filling email field — value will be provided by the user at execution time', [step - 1],
-      'Clear the email field'))
-      step++
-
-      steps.push(makeStep(step, makeAction('focus', 'Focus password field', {
-        selector: passwordField,
-        tag: 'input',
-        targetDescription: 'Password input field',
-      }), 'Focusing the password input field', [step - 1]))
+      }), 'Filling email/username field — value will be provided by the user at execution time', loginLink ? [step - 1] : [],
+      'Clear the email/username field'))
       step++
 
       steps.push(makeStep(step, makeAction('fill', 'Fill password field with user-provided value', {
@@ -215,10 +232,10 @@ const SCENARIOS: ScenarioMatch[] = [
       'Clear the password field'))
       step++
 
-      steps.push(makeStep(step, makeAction('click', `Click "${submitBtn}" button`, {
-        selector: `button:has-text("${submitBtn}"), input[type="submit"]`,
+      steps.push(makeStep(step, makeAction('click', 'Click sign-in / submit button', {
+        selector: submitSelector,
         tag: 'button',
-        targetDescription: 'Submit/login button',
+        targetDescription: 'Submit/sign-in button',
         requiresApproval: true,
       }), `Clicking the submit button to complete login`, [step - 1]))
 

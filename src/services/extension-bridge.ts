@@ -61,20 +61,28 @@ function sendBridgeMessage(msg: Record<string, unknown>): Promise<DOMCommandResp
 }
 
 export class ExtensionDOMBridge {
+  // description is forwarded so content-script can use it as a fallback hint
+  // when the CSS selector doesn't match any element on the page.
+  private lastDescription = ''
+
+  setDescription(desc: string) {
+    this.lastDescription = desc
+  }
+
   async click(selector: string) {
-    return sendBridgeMessage({ type: 'DOM_CLICK', selector })
+    return sendBridgeMessage({ type: 'DOM_CLICK', selector, description: this.lastDescription })
   }
 
   async focus(selector: string) {
-    return sendBridgeMessage({ type: 'DOM_FOCUS', selector })
+    return sendBridgeMessage({ type: 'DOM_FOCUS', selector, description: this.lastDescription })
   }
 
   async type(selector: string, text: string) {
-    return sendBridgeMessage({ type: 'DOM_TYPE', selector, text })
+    return sendBridgeMessage({ type: 'DOM_TYPE', selector, text, description: this.lastDescription })
   }
 
   async fill(selector: string, value: string) {
-    return sendBridgeMessage({ type: 'DOM_FILL', selector, value })
+    return sendBridgeMessage({ type: 'DOM_FILL', selector, value, description: this.lastDescription })
   }
 
   async navigate(url: string) {

@@ -382,6 +382,14 @@ export class ActionExecutor {
   }
 
   private async dispatchAction(action: Action): Promise<DOMOperationResult> {
+    // Give the bridge the human description so it can fall back to it when
+    // the CSS selector doesn't match any element on the live page.
+    if ('setDescription' in this.bridge && typeof (this.bridge as { setDescription?: (d: string) => void }).setDescription === 'function') {
+      (this.bridge as { setDescription: (d: string) => void }).setDescription(
+        action.target?.description ?? action.description ?? ''
+      )
+    }
+
     switch (action.type) {
       case 'click':
         return this.bridge.click(action.target!.selector)
