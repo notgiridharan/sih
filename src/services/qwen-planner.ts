@@ -288,6 +288,16 @@ export function initQwen(onProgress?: (msg: string) => void): Promise<MLCEngine 
   return _enginePromise
 }
 
+/**
+ * Returns true only when the Qwen3 engine is fully initialised and ready to
+ * accept inference calls.  Use this to decide whether to use Qwen or fall back
+ * to MockLLMProvider for the current task — callers should NOT await engine
+ * loading; they should use Mock immediately and let the background load finish.
+ */
+export function isQwenReady(): boolean {
+  return _engine !== null
+}
+
 // ─── QwenLLMProvider ─────────────────────────────────────────────────────────
 
 /**
