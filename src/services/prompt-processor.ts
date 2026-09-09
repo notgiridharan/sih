@@ -7,12 +7,13 @@ import type {
   LLMRequest,
 } from '../types/agent'
 import type { ScanResult } from '../types/scan'
-import { scan } from './scanner'
+import { scan, scanWithOCR, scanWithML } from './scanner'
 import { sanitize } from './sanitization'
 import type { SanitizationOutput } from './sanitization'
 import { detectPromptInjections } from './injection-detector'
-import { captureActiveTab, isExtension } from './extension-bridge'
+import { captureActiveTab, captureScreenshot, isExtension } from './extension-bridge'
 import type { LLMProvider } from './llm-service'
+import { findRelevant } from './bge-embedding-service'
 import { MockLLMProvider } from './llm-service'
 import { validatePlanSafety } from './action-safety-validator'
 
@@ -194,12 +195,41 @@ export class PromptProcessor {
 
       this.checkAborted()
 
-      // 3. Scan page
+      // 3a. Capture screenshot (non-fatal — restricted pages skip silently)
+      let screenshot: string | null = null
+      if (isExtension()) {
+        try {
+          const cap = await captureScreenshot()
+          screenshot = cap.dataUrl
+        } catch {
+          // Restricted page or permission denied — proceed without screenshot
+        }
+      }
+
+      this.checkAborted()
+
+      // 3b. OCR + regex scan
       this.transition('scanning', 'Scanning page for privacy risks...')
-      const scanStep = makeStep('scanning', 'Privacy & security scan')
+      const scanStep = makeStep('scanning', 'Privacy & security scan (OCR + regex)')
       this.addStep(scanStep)
 
-      const scanResult = scan({ url: page.url, dom: page.dom, screenshot: null })
+      const onOCRStatus = (status: string) => this.emit('thinking', 'scanning', `OCR: ${status}`)
+      let scanResult = await scanWithOCR(
+        { url: page.url, dom: page.dom, screenshot },
+        onOCRStatus,
+        this.signal ?? undefined,
+      )
+
+      this.checkAborted()
+
+      // 3c. DeBERTa injection augmentation (silently skips if model absent)
+      const onMLStatus = (status: string) => this.emit('thinking', 'scanning', `ML: ${status}`)
+      scanResult = await scanWithML(
+        { url: page.url, dom: page.dom, screenshot },
+        onMLStatus,
+        this.signal ?? undefined,
+      )
+
       this.updateStep(scanStep.id, completeStep({
         ...scanStep,
         detail: `Found ${scanResult.piiMatches.length} PII, ${scanResult.promptInjections.length} injections, ${scanResult.hiddenContent.length} hidden`,
@@ -236,7 +266,24 @@ export class PromptProcessor {
       const llmStep = makeStep('processing-prompt', 'Mock LLM reasoning')
       this.addStep(llmStep)
 
-      const llmRequest = buildLLMRequest(prompt, sanitization, scanResult, page)
+      let llmRequest = buildLLMRequest(prompt, sanitization, scanResult, page)
+
+      // 5a. BGE semantic ranking — focus context on most relevant passages
+      const passages = llmRequest.sanitizedContext
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 20)
+      if (passages.length > 0) {
+        try {
+          const relevant = await findRelevant(prompt.sanitizedText, passages, 20)
+          if (relevant.length > 0) {
+            llmRequest = { ...llmRequest, sanitizedContext: relevant.map(r => r.text).join('\n') }
+          }
+        } catch {
+          // BGE unavailable — use full context
+        }
+      }
+
       assertNoLeakedData(llmRequest, sanitization)
 
       const llmResponse = await this.llmProvider.generatePlan(llmRequest)

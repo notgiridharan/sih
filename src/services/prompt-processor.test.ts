@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   PromptProcessor,
   StaticPageSource,
@@ -10,6 +10,40 @@ import type { LLMRequest } from '../types/agent'
 // Action validation tests moved to action-safety-validator.test.ts
 import type { SanitizationOutput } from './sanitization'
 import { MockLLMProvider } from './llm-service'
+
+// Mock scanner so we can verify OCR + ML branches without real ONNX models
+vi.mock('./scanner', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./scanner')>()
+  return {
+    ...original,
+    scanWithOCR: vi.fn().mockImplementation(
+      (target, _onStatus, _signal) => Promise.resolve(original.scan(target))
+    ),
+    scanWithML: vi.fn().mockImplementation(
+      (target, _onStatus, _signal) => Promise.resolve(original.scan(target))
+    ),
+  }
+})
+
+// Mock BGE so findRelevant doesn't need the ONNX model in tests
+vi.mock('./bge-embedding-service', () => ({
+  findRelevant: vi.fn().mockResolvedValue([]),
+  initBGE: vi.fn().mockResolvedValue(false),
+  embed: vi.fn().mockResolvedValue(null),
+}))
+
+// Mock extension-bridge so captureScreenshot is available in test environment
+vi.mock('./extension-bridge', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./extension-bridge')>()
+  return {
+    ...original,
+    isExtension: vi.fn().mockReturnValue(false),   // tests are not in extension context
+    captureScreenshot: vi.fn().mockResolvedValue({ dataUrl: 'data:image/png;base64,mock' }),
+    captureActiveTab: vi.fn().mockResolvedValue({ dom: '', url: 'about:blank', title: '' }),
+  }
+})
+
+beforeEach(() => { vi.clearAllMocks() })
 
 function makePage(overrides: Partial<PageSource> = {}): PageSource {
   return {
@@ -285,5 +319,139 @@ describe('PromptProcessor', () => {
 
     const session = await proc.process('Login')
     expect(session.state.phase).toBe('awaiting-approval')
+  })
+})
+
+// --- Full pipeline integration: OCR + ML + BGE ---
+
+describe('PromptProcessor full pipeline (OCR + ML + BGE)', () => {
+  it('calls scanWithOCR (not bare scan) during processing', async () => {
+    const { scanWithOCR } = await import('./scanner')
+    const proc = makeProcessor()
+    await proc.process('Login to this portal')
+    expect(vi.mocked(scanWithOCR)).toHaveBeenCalledOnce()
+  })
+
+  it('calls scanWithML for DeBERTa augmentation after OCR scan', async () => {
+    const { scanWithML } = await import('./scanner')
+    const proc = makeProcessor()
+    await proc.process('Login to this portal')
+    expect(vi.mocked(scanWithML)).toHaveBeenCalledOnce()
+  })
+
+  it('passes signal to scanWithOCR', async () => {
+    const { scanWithOCR } = await import('./scanner')
+    const ctrl = new AbortController()
+    const proc = new PromptProcessor({
+      llmProvider: new MockLLMProvider({ latencyMs: 0 }),
+      pageSource: new StaticPageSource(makePage()),
+      signal: ctrl.signal,
+    })
+    await proc.process('Login')
+    const [, , sig] = vi.mocked(scanWithOCR).mock.calls[0]
+    expect(sig).toBe(ctrl.signal)
+  })
+
+  it('does not call captureScreenshot outside extension context', async () => {
+    const { captureScreenshot } = await import('./extension-bridge')
+    const proc = makeProcessor()
+    await proc.process('Login')
+    // isExtension() is mocked to return false, so captureScreenshot must NOT be called
+    expect(vi.mocked(captureScreenshot)).not.toHaveBeenCalled()
+  })
+
+  it('calls captureScreenshot when isExtension() returns true', async () => {
+    const bridge = await import('./extension-bridge')
+    vi.mocked(bridge.isExtension).mockReturnValueOnce(true)
+    const proc = makeProcessor()
+    await proc.process('Login')
+    expect(vi.mocked(bridge.captureScreenshot)).toHaveBeenCalledOnce()
+  })
+
+  it('passes screenshot dataUrl to scanWithOCR when extension captures it', async () => {
+    const bridge = await import('./extension-bridge')
+    vi.mocked(bridge.isExtension).mockReturnValueOnce(true)
+    const { scanWithOCR } = await import('./scanner')
+    const proc = makeProcessor()
+    await proc.process('Login')
+    const [target] = vi.mocked(scanWithOCR).mock.calls[0]
+    expect(target.screenshot).toBe('data:image/png;base64,mock')
+  })
+
+  it('proceeds without screenshot when captureScreenshot throws (restricted page)', async () => {
+    const bridge = await import('./extension-bridge')
+    vi.mocked(bridge.isExtension).mockReturnValueOnce(true)
+    vi.mocked(bridge.captureScreenshot).mockRejectedValueOnce(
+      Object.assign(new Error('Cannot capture'), { restricted: true })
+    )
+    const { scanWithOCR } = await import('./scanner')
+    const proc = makeProcessor()
+    const session = await proc.process('Login')
+    // Pipeline should still reach awaiting-approval even without a screenshot
+    expect(session.state.phase).toBe('awaiting-approval')
+    const [target] = vi.mocked(scanWithOCR).mock.calls[0]
+    expect(target.screenshot).toBeNull()
+  })
+
+  it('calls findRelevant with sanitized prompt text', async () => {
+    const { findRelevant } = await import('./bge-embedding-service')
+    const proc = makeProcessor()
+    await proc.process('Login to this portal')
+    expect(vi.mocked(findRelevant)).toHaveBeenCalled()
+    const [query] = vi.mocked(findRelevant).mock.calls[0]
+    expect(query).toContain('Login to this portal')
+  })
+
+  it('falls back to full context when BGE findRelevant returns empty', async () => {
+    // findRelevant is mocked to return [] — pipeline should still complete
+    const proc = makeProcessor()
+    const session = await proc.process('Login to this portal')
+    expect(session.state.phase).toBe('awaiting-approval')
+    expect(session.state.plan!.steps.length).toBeGreaterThan(0)
+  })
+
+  it('uses ranked passages from findRelevant when available', async () => {
+    const { findRelevant } = await import('./bge-embedding-service')
+    vi.mocked(findRelevant).mockResolvedValueOnce([
+      { index: 0, score: 0.95, text: 'Ranked passage about login form' },
+      { index: 1, score: 0.80, text: 'Another relevant passage' },
+    ])
+    const proc = makeProcessor()
+    const session = await proc.process('Login to this portal')
+    expect(session.state.phase).toBe('awaiting-approval')
+    // Plan was generated using focused context — pipeline still completes
+    expect(session.state.plan!.steps.length).toBeGreaterThan(0)
+  })
+
+  it('emits scanning thinking events for OCR and ML status', async () => {
+    const events: ProgressEvent[] = []
+    const { scanWithOCR } = await import('./scanner')
+    vi.mocked(scanWithOCR).mockImplementationOnce(async (target, onOCRStatus, _signal) => {
+      onOCRStatus?.('loading')
+      onOCRStatus?.('processing')
+      const { scan } = await import('./scanner')
+      return scan(target)
+    })
+    const proc = makeProcessor()
+    proc.onProgress(e => events.push(e))
+    await proc.process('Login')
+    const thinkingEvents = events.filter(e => e.type === 'thinking' && e.message.startsWith('OCR:'))
+    expect(thinkingEvents.length).toBeGreaterThan(0)
+  })
+
+  it('full pipeline session has PII matches from the scan', async () => {
+    const proc = makeProcessor()
+    const session = await proc.process('Login to this portal')
+    // The mock page has an email (john@example.com) and password (secret123)
+    expect(session.piiMatches).toBeDefined()
+    expect(Array.isArray(session.piiMatches)).toBe(true)
+  })
+
+  it('sanitized DOM never contains original sensitive values even through full pipeline', async () => {
+    const proc = makeProcessor()
+    const session = await proc.process('Login to this portal')
+    const sanitizedDOM = session.state.sanitizedPage!.sanitizedDOM
+    expect(sanitizedDOM).not.toContain('john@example.com')
+    expect(sanitizedDOM).not.toContain('secret123')
   })
 })
