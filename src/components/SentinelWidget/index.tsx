@@ -56,6 +56,7 @@ interface FillValueRequest {
   description: string
   selector: string
   isPassword: boolean
+  vaultDefault?: string  // pre-populated from vault; user can confirm or override
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -335,8 +336,10 @@ function FillValuesCard({
   onCancel: () => void
 }) {
   const [values, setValues] = useState<Record<number, string>>(() =>
-    Object.fromEntries(requests.map(r => [r.stepNumber, '']))
+    Object.fromEntries(requests.map(r => [r.stepNumber, r.vaultDefault ?? '']))
   )
+
+  const vaultCount = requests.filter(r => !!r.vaultDefault).length
 
   return (
     <div className="w-confirm">
@@ -345,19 +348,26 @@ function FillValuesCard({
         <div className="w-confirm-title">Values Needed</div>
       </div>
       <div className="w-confirm-desc" style={{ marginBottom: 10 }}>
-        Provide values for {requests.length} field{requests.length !== 1 ? 's' : ''} before executing:
+        {vaultCount > 0
+          ? `${vaultCount} value${vaultCount !== 1 ? 's' : ''} pre-filled from your vault — confirm or edit:`
+          : `Provide values for ${requests.length} field${requests.length !== 1 ? 's' : ''} before executing:`}
       </div>
       {requests.map(req => (
         <div key={req.stepNumber} style={{ marginBottom: 10 }}>
-          <label style={{ fontSize: 11, color: 'var(--wt-3)', display: 'block', marginBottom: 3 }}>
+          <label style={{ fontSize: 11, color: 'var(--wt-3)', display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
             {req.description}
+            {req.vaultDefault && (
+              <span style={{ fontSize: 9, color: '#98c379', background: 'rgba(152,195,121,0.12)', borderRadius: 3, padding: '1px 4px' }}>
+                vault
+              </span>
+            )}
           </label>
           <input
             type={req.isPassword ? 'password' : 'text'}
             style={{
               width: '100%', fontSize: 12, padding: '5px 8px', borderRadius: 5,
-              border: '1px solid var(--wb-3)', background: 'var(--wb-2)',
-              color: 'var(--wt-1)', boxSizing: 'border-box',
+              border: req.vaultDefault ? '1px solid rgba(152,195,121,0.4)' : '1px solid var(--wb-3)',
+              background: 'var(--wb-2)', color: 'var(--wt-1)', boxSizing: 'border-box',
             }}
             value={values[req.stepNumber] ?? ''}
             onChange={e => setValues(prev => ({ ...prev, [req.stepNumber]: e.target.value }))}
@@ -758,41 +768,57 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
       return
     }
 
-    // Collect user values for fill/type steps that have no value yet
-    const nullFillSteps = plan.steps.filter(
-      s => (s.action.type === 'fill' || s.action.type === 'type') && !s.action.value
-    )
+    // Reload vault creds from ref (set on mount or after setup); try async reload
+    // if missing so a page refresh doesn't lose pre-fill
+    const doApprove = (vaultCreds: VaultCredentials | null) => {
+      // Collect fill/type steps that still need a value
+      const nullFillSteps = plan.steps.filter(
+        s => (s.action.type === 'fill' || s.action.type === 'type') && !s.action.value
+      )
 
-    // Pre-populate from vault where possible
-    const vaultCreds = vaultCredsRef.current
-    const vaultFilled: Record<number, string> = {}
-    const stillNeedsValues: typeof nullFillSteps = []
-    for (const s of nullFillSteps) {
-      const vaultValue = vaultCreds ? matchVaultField(s.action.description, vaultCreds) : null
-      if (vaultValue) {
-        vaultFilled[s.stepNumber] = vaultValue
-      } else {
-        stillNeedsValues.push(s)
+      if (nullFillSteps.length === 0) {
+        pendingPlanRef.current = plan
+        void executeApprovedPlan(plan, {})
+        return
       }
-    }
 
-    if (stillNeedsValues.length > 0) {
-      pendingPlanRef.current = plan
-      // Store vault-filled values so FillValuesCard can merge them
-      setFillRequests(stillNeedsValues.map(s => ({
-        stepNumber: s.stepNumber,
-        description: s.action.description,
-        selector: s.action.target?.selector ?? '',
-        isPassword: /password|passwd|pwd/i.test(s.action.target?.selector ?? '') ||
-                    /password/i.test(s.action.description),
-      })))
-      // Attach vaultFilled to the plan ref so handleFillValuesSubmit can merge
+      // Map each step to its vault-matched value (may be null)
+      const vaultFilled: Record<number, string> = {}
+      const requests: FillValueRequest[] = nullFillSteps.map(s => {
+        const vaultValue = vaultCreds ? matchVaultField(s.action.description, vaultCreds) : null
+        if (vaultValue) vaultFilled[s.stepNumber] = vaultValue
+        return {
+          stepNumber: s.stepNumber,
+          description: s.action.description,
+          selector: s.action.target?.selector ?? '',
+          isPassword: /password|passwd|pwd/i.test(s.action.target?.selector ?? '') ||
+                      /password/i.test(s.action.description),
+          vaultDefault: vaultValue ?? undefined,
+        }
+      })
+
+      // If ALL fields are covered by vault, skip FillValuesCard and execute directly
+      const allCovered = requests.every(r => !!r.vaultDefault)
+      if (allCovered) {
+        pendingPlanRef.current = plan
+        void executeApprovedPlan(plan, vaultFilled)
+        return
+      }
+
+      // Some fields need user input — show FillValuesCard with vault defaults pre-filled
       ;(pendingPlanRef as React.MutableRefObject<ActionPlan & { _vaultFilled?: Record<number, string> } | null>).current = { ...plan, _vaultFilled: vaultFilled }
-      return  // stay in awaiting-approval; FillValuesCard will call handleFillValuesSubmit
+      setFillRequests(requests)
     }
 
-    pendingPlanRef.current = plan
-    void executeApprovedPlan(plan, vaultFilled)
+    if (vaultCredsRef.current) {
+      doApprove(vaultCredsRef.current)
+    } else {
+      // Vault creds not in memory — try reloading from storage (handles page reload case)
+      loadVaultCredentials().then(creds => {
+        if (creds) vaultCredsRef.current = creds
+        doApprove(creds)
+      }).catch(() => doApprove(null))
+    }
   }, [addSystem, executeApprovedPlan])
 
   const handleFillValuesSubmit = useCallback((values: Record<number, string>) => {

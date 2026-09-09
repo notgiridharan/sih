@@ -402,101 +402,176 @@
     return null
   }
 
-  // Wrap the original findElement to apply the description fallback.
+  // Search all accessible same-origin iframes for an element.
+  function findElementInFrames(selectorStr, description) {
+    try {
+      const frames = Array.from(document.querySelectorAll('iframe'))
+      for (const frame of frames) {
+        try {
+          const doc = frame.contentDocument || frame.contentWindow?.document
+          if (!doc) continue
+          // Try CSS selectors inside this frame
+          const selectors = selectorStr ? selectorStr.split(',').map(s => s.trim()) : []
+          for (const sel of selectors) {
+            try { const el = doc.querySelector(sel); if (el) return el } catch { /* skip */ }
+          }
+          // Description fallback inside the frame
+          if (description) {
+            const lower = description.toLowerCase()
+            const FIELD_HINTS = [
+              { words: ['email', 'username', 'user', 'mobile', 'phone', 'login'],
+                query: 'input[type="email"], input[type="text"], input[type="tel"]' },
+              { words: ['password', 'passwd', 'pwd'], query: 'input[type="password"]' },
+            ]
+            for (const hint of FIELD_HINTS) {
+              if (hint.words.some(w => lower.includes(w))) {
+                const candidates = doc.querySelectorAll(hint.query)
+                for (const el of candidates) {
+                  const rect = el.getBoundingClientRect()
+                  if (rect.width > 0 && rect.height > 0) return el
+                }
+              }
+            }
+          }
+        } catch { /* cross-origin frame, skip */ }
+      }
+    } catch { /* ignore */ }
+    return null
+  }
+
+  // Wrap the original findElement to apply the description fallback and iframe search.
   // Handlers call findElementWithFallback(selector, description).
   function findElementWithFallback(selectorStr, description) {
-    return findElement(selectorStr) ?? findElementByDescription(description)
+    return findElement(selectorStr)
+      ?? findElementByDescription(description)
+      ?? findElementInFrames(selectorStr, description)
+  }
+
+  // Async version: retries up to maxWaitMs in 300ms intervals when element isn't
+  // immediately present (handles SPAs / lazy-loaded login overlays).
+  function waitForElement(selectorStr, description, maxWaitMs) {
+    return new Promise(resolve => {
+      const el = findElementWithFallback(selectorStr, description)
+      if (el) { resolve(el); return }
+
+      const interval = 300
+      let elapsed = 0
+      const timer = setInterval(() => {
+        elapsed += interval
+        const found = findElementWithFallback(selectorStr, description)
+        if (found || elapsed >= maxWaitMs) {
+          clearInterval(timer)
+          resolve(found)
+        }
+      }, interval)
+    })
   }
 
   // ─── DOM action handlers ──────────────────────────────────────────────────
 
   function handleDOMClick(msg, sendResponse) {
-    try {
-      const el = findElementWithFallback(msg.selector, msg.description)
+    waitForElement(msg.selector, msg.description, 3000).then(el => {
       if (!el) {
         sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
         return
       }
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      el.focus()
-      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
-      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }))
-      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-      sendResponse({ success: true, error: null, detail: `Clicked ${msg.selector}` })
-    } catch (err) {
-      sendResponse({ success: false, error: err.message, detail: null })
+      try {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.focus()
+        el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+        el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }))
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+        sendResponse({ success: true, error: null, detail: `Clicked ${msg.selector}` })
+      } catch (err) {
+        sendResponse({ success: false, error: err.message, detail: null })
+      }
+    })
+    return true // async
+  }
+
+  function nativeFill(el, value) {
+    // Works with React controlled inputs — bypasses synthetic value tracking
+    const doc = el.ownerDocument || document
+    const win = doc.defaultView || window
+    const nativeSetter =
+      Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value')?.set ||
+      Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, 'value')?.set
+    if (nativeSetter) {
+      nativeSetter.call(el, value)
+    } else {
+      el.value = value
     }
+    el.dispatchEvent(new win.Event('input', { bubbles: true }))
+    el.dispatchEvent(new win.Event('change', { bubbles: true }))
   }
 
   function handleDOMFill(msg, sendResponse) {
-    try {
-      const el = findElementWithFallback(msg.selector, msg.description)
+    waitForElement(msg.selector, msg.description, 3000).then(el => {
       if (!el) {
         sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
         return
       }
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      el.focus()
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype, 'value'
-      )?.set || Object.getOwnPropertyDescriptor(
-        HTMLTextAreaElement.prototype, 'value'
-      )?.set
-      if (nativeInputValueSetter) {
-        nativeInputValueSetter.call(el, msg.value ?? '')
-      } else {
-        el.value = msg.value ?? ''
+      try {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.focus()
+        nativeFill(el, msg.value ?? '')
+        sendResponse({ success: true, error: null, detail: `Filled ${msg.selector}` })
+      } catch (err) {
+        sendResponse({ success: false, error: err.message, detail: null })
       }
-      el.dispatchEvent(new Event('input', { bubbles: true }))
-      el.dispatchEvent(new Event('change', { bubbles: true }))
-      sendResponse({ success: true, error: null, detail: `Filled ${msg.selector}` })
-    } catch (err) {
-      sendResponse({ success: false, error: err.message, detail: null })
-    }
+    })
+    return true // async
   }
 
   function handleDOMType(msg, sendResponse) {
-    try {
-      const el = findElementWithFallback(msg.selector, msg.description)
+    waitForElement(msg.selector, msg.description, 3000).then(el => {
       if (!el) {
         sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
         return
       }
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      el.focus()
-      const text = msg.text ?? ''
-      for (const char of text) {
-        el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }))
-        el.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }))
-        const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-          || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
-        if (nativeSetter) {
-          nativeSetter.call(el, (el.value || '') + char)
-        } else {
-          el.value = (el.value || '') + char
+      try {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.focus()
+        const doc = el.ownerDocument || document
+        const win = doc.defaultView || window
+        const text = msg.text ?? ''
+        for (const char of text) {
+          el.dispatchEvent(new win.KeyboardEvent('keydown', { key: char, bubbles: true }))
+          el.dispatchEvent(new win.KeyboardEvent('keypress', { key: char, bubbles: true }))
+          const nativeSetter =
+            Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value')?.set ||
+            Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, 'value')?.set
+          if (nativeSetter) {
+            nativeSetter.call(el, (el.value || '') + char)
+          } else {
+            el.value = (el.value || '') + char
+          }
+          el.dispatchEvent(new win.Event('input', { bubbles: true }))
+          el.dispatchEvent(new win.KeyboardEvent('keyup', { key: char, bubbles: true }))
         }
-        el.dispatchEvent(new Event('input', { bubbles: true }))
-        el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }))
+        sendResponse({ success: true, error: null, detail: `Typed into ${msg.selector}` })
+      } catch (err) {
+        sendResponse({ success: false, error: err.message, detail: null })
       }
-      sendResponse({ success: true, error: null, detail: `Typed into ${msg.selector}` })
-    } catch (err) {
-      sendResponse({ success: false, error: err.message, detail: null })
-    }
+    })
+    return true // async
   }
 
   function handleDOMFocus(msg, sendResponse) {
-    try {
-      const el = findElementWithFallback(msg.selector, msg.description)
+    waitForElement(msg.selector, msg.description, 2000).then(el => {
       if (!el) {
         sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
         return
       }
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      el.focus()
-      sendResponse({ success: true, error: null, detail: `Focused ${msg.selector}` })
-    } catch (err) {
-      sendResponse({ success: false, error: err.message, detail: null })
-    }
+      try {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.focus()
+        sendResponse({ success: true, error: null, detail: `Focused ${msg.selector}` })
+      } catch (err) {
+        sendResponse({ success: false, error: err.message, detail: null })
+      }
+    })
+    return true // async
   }
 
   function handleDOMScroll(msg, sendResponse) {
