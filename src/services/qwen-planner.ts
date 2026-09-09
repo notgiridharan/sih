@@ -31,7 +31,7 @@ const MAX_CONTEXT_CHARS = 2000
 
 const ALLOWED_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
   'navigate', 'click', 'fill', 'type', 'focus',
-  'wait', 'scroll', 'select', 'send_keys', 'go_back',
+  'wait', 'scroll', 'select', 'send_keys', 'go_back', 'extract',
 ])
 
 // ─── System prompt ────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ const ALLOWED_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
  */
 export const SYSTEM_PROMPT = `You are Sentinel's browser automation planner. Convert a user task and sanitized page context into a structured JSON action plan.
 
-ALLOWED ACTION TYPES ONLY: navigate, click, fill, type, focus, wait, scroll, select, send_keys, go_back
+ALLOWED ACTION TYPES ONLY: navigate, click, fill, type, focus, wait, scroll, select, send_keys, go_back, extract
 
 STRICT RULES:
 1. "fill" steps MUST have requiresApproval: true — user supplies sensitive values at runtime
@@ -53,6 +53,7 @@ STRICT RULES:
 3. dependsOn lists step numbers that must complete before this step starts
 4. riskLevel: "low" for navigation/read, "medium" for form fills, "high" for destructive actions
 5. selector: null when no specific DOM target is needed
+6. "extract" reads visible text from the selected element and returns it — use selector: "body" to extract the full page
 
 OUTPUT FORMAT — output ONLY this JSON, nothing else:
 {

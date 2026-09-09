@@ -19,6 +19,7 @@ export interface PlanValidationResult {
 
 const ALLOWED_ACTION_TYPES: ReadonlySet<ActionType> = new Set([
   'navigate', 'click', 'fill', 'type', 'focus', 'wait',
+  'scroll', 'select', 'send_keys', 'go_back', 'extract',
 ])
 
 // --- Dangerous patterns ---

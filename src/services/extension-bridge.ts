@@ -111,6 +111,10 @@ export class ExtensionDOMBridge {
     const res = await sendBridgeMessage({ type: 'DOM_IS_PASSWORD', selector })
     return res.success
   }
+
+  async extract(selector: string): Promise<DOMCommandResponse> {
+    return sendBridgeMessage({ type: 'DOM_EXTRACT', selector })
+  }
 }
 
 export async function captureActiveTab(): Promise<TabCapture> {

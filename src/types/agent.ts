@@ -2,7 +2,7 @@ import type { PIIMatch, PIICategory, RiskLevel, ScanResult } from './scan'
 
 // --- Action types ---
 
-export type ActionType = 'navigate' | 'click' | 'fill' | 'type' | 'focus' | 'wait' | 'scroll' | 'select' | 'send_keys' | 'go_back'
+export type ActionType = 'navigate' | 'click' | 'fill' | 'type' | 'focus' | 'wait' | 'scroll' | 'select' | 'send_keys' | 'go_back' | 'extract'
 
 export interface Action {
   id: string

@@ -505,6 +505,16 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
       const icon = record.result.status === 'completed' ? 'OK' : 'FAIL'
       const errMsg = record.result.error ? ` — ${record.result.error}` : ''
       addSystem(`[${icon}] Step ${record.stepNumber}: ${record.action.description}${errMsg}`)
+
+      // Surface extracted text as a Sentinel reply so the user can read it
+      if (
+        record.action.type === 'extract' &&
+        record.result.status === 'completed' &&
+        record.result.detail
+      ) {
+        addMessage('sentinel', `**Extracted content:**\n${record.result.detail}`)
+      }
+
       setActivityDetail(`Step ${record.stepNumber}/${plan.steps.length}: ${record.action.description}`)
     })
 

@@ -380,7 +380,7 @@ function buildLLMRequest(
     sanitizedContext: scanResult.sanitizedContext ?? sanitization.sanitizedContent,
     pageUrl: page.url,
     pageTitle: page.title,
-    availableActions: ['navigate', 'click', 'fill', 'type', 'focus', 'wait', 'scroll', 'select', 'send_keys', 'go_back'],
+    availableActions: ['navigate', 'click', 'fill', 'type', 'focus', 'wait', 'scroll', 'select', 'send_keys', 'go_back', 'extract'],
     redactionSummary: {
       totalRedacted: sanitization.statistics.totalRedactions,
       categories: sanitization.mapping.categoryCounts,

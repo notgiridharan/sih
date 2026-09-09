@@ -50,6 +50,7 @@ export interface DOMBridge {
   elementExists(selector: string): Promise<boolean>
   getElementAttribute(selector: string, attr: string): Promise<string | null>
   isPasswordField(selector: string): Promise<boolean>
+  extract(selector: string): Promise<DOMOperationResult>
 }
 
 // --- Mock DOM bridge (for testing, no real browser interaction) ---
@@ -115,6 +116,11 @@ export class MockDOMBridge implements DOMBridge {
   async isPasswordField(selector: string): Promise<boolean> {
     this.log.push({ method: 'isPasswordField', args: [selector] })
     return selector.includes('password')
+  }
+
+  async extract(selector: string): Promise<DOMOperationResult> {
+    this.log.push({ method: 'extract', args: [selector] })
+    return { success: true, error: null, detail: `[mock] Extracted text from ${selector}` }
   }
 }
 
@@ -394,6 +400,8 @@ export class ActionExecutor {
         return this.bridge.select(action.target!.selector, action.value ?? '')
       case 'send_keys':
         return this.bridge.sendKeys(action.value ?? '')
+      case 'extract':
+        return this.bridge.extract(action.target?.selector ?? 'body')
       case 'wait':
         return this.executeWait(action)
       default:

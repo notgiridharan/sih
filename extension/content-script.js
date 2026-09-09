@@ -542,6 +542,23 @@
     }
   }
 
+  function handleDOMExtract(msg, sendResponse) {
+    try {
+      const el = msg.selector ? findElement(msg.selector) : document.body
+      if (!el) {
+        sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
+        return
+      }
+      // Use innerText for rendered text (respects CSS visibility); fall back to textContent
+      const text = (el.innerText || el.textContent || '').trim()
+      // Cap at 4000 chars so the detail stays readable in the widget
+      const clipped = text.length > 4000 ? text.slice(0, 4000) + '\n[...truncated]' : text
+      sendResponse({ success: true, error: null, detail: clipped })
+    } catch (err) {
+      sendResponse({ success: false, error: err.message, detail: null })
+    }
+  }
+
   // ─── Message handlers ─────────────────────────────────────────────────────
 
   const DOM_HANDLERS = {
@@ -555,6 +572,7 @@
     'DOM_ELEMENT_EXISTS': handleDOMElementExists,
     'DOM_GET_ATTRIBUTE': handleDOMGetAttribute,
     'DOM_IS_PASSWORD': handleDOMIsPassword,
+    'DOM_EXTRACT':     handleDOMExtract,
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
