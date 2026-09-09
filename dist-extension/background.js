@@ -69,6 +69,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 const DOM_COMMANDS = [
   'DOM_CLICK', 'DOM_FILL', 'DOM_TYPE', 'DOM_FOCUS', 'DOM_SCROLL',
   'DOM_SELECT', 'DOM_SEND_KEYS', 'DOM_ELEMENT_EXISTS', 'DOM_GET_ATTRIBUTE', 'DOM_IS_PASSWORD',
+  'DOM_EXTRACT',
 ]
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

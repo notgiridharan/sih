@@ -328,7 +328,8 @@
   }
 
   // ─── Element finder ──────────────────────────────────────────────────────
-  // Supports comma-separated selectors and :has-text("...") pseudo-selector
+  // Supports comma-separated selectors and :has-text("...") pseudo-selector.
+  // Falls back to aria-label / placeholder / visible-text search when CSS fails.
 
   function findElement(selectorStr) {
     if (!selectorStr) return null
@@ -356,11 +357,62 @@
     return null
   }
 
+  // Smart fallback: when the generated selector misses, search by description keyword
+  // across aria-label, placeholder, name, id and visible text of likely elements.
+  function findElementByDescription(description) {
+    if (!description) return null
+    const lower = description.toLowerCase()
+
+    // Map common intent words to concrete attribute searches
+    const FIELD_HINTS = [
+      { words: ['email', 'username', 'user', 'mobile', 'phone', 'login'],
+        query: 'input[type="email"], input[type="text"], input[type="tel"], input[type="number"]' },
+      { words: ['password', 'passwd', 'pwd'],
+        query: 'input[type="password"]' },
+    ]
+
+    for (const hint of FIELD_HINTS) {
+      if (hint.words.some(w => lower.includes(w))) {
+        const candidates = document.querySelectorAll(hint.query)
+        for (const el of candidates) {
+          // Pick the first visible one
+          const rect = el.getBoundingClientRect()
+          if (rect.width > 0 && rect.height > 0) return el
+        }
+      }
+    }
+
+    // Generic: search all interactive elements by visible text / aria / placeholder
+    const INTERACTIVE = 'button, a, input, [role="button"], [role="link"]'
+    try {
+      const els = document.querySelectorAll(INTERACTIVE)
+      for (const el of els) {
+        const text = (
+          el.textContent?.trim() ||
+          el.getAttribute('aria-label') ||
+          el.getAttribute('placeholder') ||
+          el.getAttribute('value') ||
+          el.getAttribute('title') ||
+          ''
+        ).toLowerCase()
+        if (text && lower.split(/\s+/).some(w => w.length > 2 && text.includes(w))) return el
+      }
+    } catch { /* ignore */ }
+
+    return null
+  }
+
+  // Wrap the original findElement to apply the description fallback.
+  // Handlers call findElementWithFallback(selector, description).
+  function findElementWithFallback(selectorStr, description) {
+    return findElement(selectorStr) ?? findElementByDescription(description)
+  }
+
   // ─── DOM action handlers ──────────────────────────────────────────────────
 
   function handleDOMClick(msg, sendResponse) {
     try {
-      const el = findElement(msg.selector)
+      const el = findElementWithFallback(msg.selector, msg.description)
       if (!el) {
         sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
         return
@@ -378,7 +430,7 @@
 
   function handleDOMFill(msg, sendResponse) {
     try {
-      const el = findElement(msg.selector)
+      const el = findElementWithFallback(msg.selector, msg.description)
       if (!el) {
         sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
         return
@@ -405,7 +457,7 @@
 
   function handleDOMType(msg, sendResponse) {
     try {
-      const el = findElement(msg.selector)
+      const el = findElementWithFallback(msg.selector, msg.description)
       if (!el) {
         sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
         return
@@ -434,7 +486,7 @@
 
   function handleDOMFocus(msg, sendResponse) {
     try {
-      const el = findElement(msg.selector)
+      const el = findElementWithFallback(msg.selector, msg.description)
       if (!el) {
         sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
         return
@@ -542,6 +594,23 @@
     }
   }
 
+  function handleDOMExtract(msg, sendResponse) {
+    try {
+      const el = msg.selector ? findElement(msg.selector) : document.body
+      if (!el) {
+        sendResponse({ success: false, error: `Element not found: ${msg.selector}`, detail: null })
+        return
+      }
+      // Use innerText for rendered text (respects CSS visibility); fall back to textContent
+      const text = (el.innerText || el.textContent || '').trim()
+      // Cap at 4000 chars so the detail stays readable in the widget
+      const clipped = text.length > 4000 ? text.slice(0, 4000) + '\n[...truncated]' : text
+      sendResponse({ success: true, error: null, detail: clipped })
+    } catch (err) {
+      sendResponse({ success: false, error: err.message, detail: null })
+    }
+  }
+
   // ─── Message handlers ─────────────────────────────────────────────────────
 
   const DOM_HANDLERS = {
@@ -555,6 +624,7 @@
     'DOM_ELEMENT_EXISTS': handleDOMElementExists,
     'DOM_GET_ATTRIBUTE': handleDOMGetAttribute,
     'DOM_IS_PASSWORD': handleDOMIsPassword,
+    'DOM_EXTRACT':     handleDOMExtract,
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
