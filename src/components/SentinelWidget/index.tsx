@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { ActionPlan, AgentSession } from '../../types/agent'
+import type { ActionPlan, AgentSession, ActionPlanStep } from '../../types/agent'
 import { PromptProcessor } from '../../services/prompt-processor'
 import type { ProgressEvent, PageSourceProvider } from '../../services/prompt-processor'
-import { ActionExecutor, MockDOMBridge } from '../../services/action-executor'
+import { ActionExecutor, MockDOMBridge, SUBMISSION_REQUIRES_USER_APPROVAL } from '../../services/action-executor'
 import { isExtension, ExtensionDOMBridge } from '../../services/extension-bridge'
 import { initQwen } from '../../services/qwen-planner'
 import { selectLLMProvider, isWebGpuAvailable } from '../../services/llm-provider-selector'
@@ -41,6 +41,13 @@ interface CompletionSummary {
   summary: string
   actions: string[]
   durationMs: number
+}
+
+interface FillValueRequest {
+  stepNumber: number
+  description: string
+  selector: string
+  isPassword: boolean
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -308,6 +315,57 @@ function ErrorCard({
   )
 }
 
+function FillValuesCard({
+  requests,
+  onSubmit,
+  onCancel,
+}: {
+  requests: FillValueRequest[]
+  onSubmit: (values: Record<number, string>) => void
+  onCancel: () => void
+}) {
+  const [values, setValues] = useState<Record<number, string>>(() =>
+    Object.fromEntries(requests.map(r => [r.stepNumber, '']))
+  )
+
+  return (
+    <div className="w-confirm">
+      <div className="w-confirm-header">
+        <div className="w-confirm-icon low">✎</div>
+        <div className="w-confirm-title">Values Needed</div>
+      </div>
+      <div className="w-confirm-desc" style={{ marginBottom: 10 }}>
+        Provide values for {requests.length} field{requests.length !== 1 ? 's' : ''} before executing:
+      </div>
+      {requests.map(req => (
+        <div key={req.stepNumber} style={{ marginBottom: 10 }}>
+          <label style={{ fontSize: 11, color: 'var(--wt-3)', display: 'block', marginBottom: 3 }}>
+            {req.description}
+          </label>
+          <input
+            type={req.isPassword ? 'password' : 'text'}
+            style={{
+              width: '100%', fontSize: 12, padding: '5px 8px', borderRadius: 5,
+              border: '1px solid var(--wb-3)', background: 'var(--wb-2)',
+              color: 'var(--wt-1)', boxSizing: 'border-box',
+            }}
+            value={values[req.stepNumber] ?? ''}
+            onChange={e => setValues(prev => ({ ...prev, [req.stepNumber]: e.target.value }))}
+            placeholder={req.isPassword ? '••••••••' : 'Enter value…'}
+            autoComplete={req.isPassword ? 'current-password' : 'off'}
+          />
+        </div>
+      ))}
+      <div className="w-confirm-btns">
+        <button className="w-btn w-btn-ghost w-btn-sm" onClick={onCancel}>Cancel</button>
+        <button className="w-btn w-btn-primary w-btn-sm" onClick={() => onSubmit(values)}>
+          Proceed
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main widget ──────────────────────────────────────────────────────────
 
 export interface SentinelWidgetProps {
@@ -319,6 +377,7 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
   const [agentState, setAgentState] = useState<WidgetState>('ready')
   const [inputValue, setInputValue] = useState('')
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null)
+  const [fillRequests, setFillRequests] = useState<FillValueRequest[]>([])
   const [completion, setCompletion] = useState<CompletionSummary | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [activityDetail, setActivityDetail] = useState<string>('')
@@ -327,6 +386,7 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
   const lastPromptRef = useRef<string>('')
   const abortControllerRef = useRef<AbortController | null>(null)
   const pendingSessionRef = useRef<AgentSession | null>(null)
+  const pendingPlanRef = useRef<ActionPlan | null>(null)
   const conversationRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -477,21 +537,32 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
     void runAgent(text)
   }, [inputValue, agentState, addMessage, runAgent])
 
-  const handleApprove = useCallback(async () => {
-    const session = pendingSessionRef.current
-    const plan = session?.state.plan
-
-    setConfirmation(null)
+  // ─── Core execution (called after fill values are collected) ─────────────
+  const executeApprovedPlan = useCallback(async (
+    plan: ActionPlan,
+    fillValues: Record<number, string>,
+  ) => {
     setAgentState('acting')
     setActivityDetail('')
-
-    if (!plan) {
-      addSystem('No plan to execute.')
-      setAgentState('ready')
-      return
-    }
-
     addSystem(`Executing ${plan.steps.length} action${plan.steps.length !== 1 ? 's' : ''}...`)
+
+    // Inject user-provided values into fill/type steps that had value: null
+    const enrichedSteps: ActionPlanStep[] = plan.steps.map(step => {
+      const userValue = fillValues[step.stepNumber]
+      if (!userValue) return step
+      return {
+        ...step,
+        action: {
+          ...step.action,
+          value: userValue,
+          // Mark as user-provided so the password guard allows it
+          target: step.action.target
+            ? { ...step.action.target, attributes: { ...step.action.target.attributes, 'data-value-source': 'user-provided' } }
+            : null,
+        },
+      }
+    })
+    const enrichedPlan: ActionPlan = { ...plan, steps: enrichedSteps }
 
     const bridge = isExtension() ? new ExtensionDOMBridge() : new MockDOMBridge()
     const allSteps = new Set(plan.steps.map(s => s.stepNumber))
@@ -506,20 +577,19 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
       const errMsg = record.result.error ? ` — ${record.result.error}` : ''
       addSystem(`[${icon}] Step ${record.stepNumber}: ${record.action.description}${errMsg}`)
 
-      // Surface extracted text as a Sentinel reply so the user can read it
       if (
         record.action.type === 'extract' &&
         record.result.status === 'completed' &&
         record.result.detail
       ) {
-        addMessage('sentinel', `**Extracted content:**\n${record.result.detail}`)
+        addMessage('sentinel', `Extracted content:\n${record.result.detail}`)
       }
 
       setActivityDetail(`Step ${record.stepNumber}/${plan.steps.length}: ${record.action.description}`)
     })
 
     try {
-      const result = await executor.executePlan(plan)
+      const result = await executor.executePlan(enrichedPlan)
 
       if (abortControllerRef.current?.signal.aborted) return
 
@@ -528,6 +598,17 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
         .filter(r => r.result.status === 'completed')
         .map(r => r.action.description)
       const failedCount = result.records.filter(r => r.result.status === 'failed').length
+
+      if (result.status === 'blocked' && result.stoppedReason === SUBMISSION_REQUIRES_USER_APPROVAL) {
+        addMessage('sentinel', `Plan paused before form submission. ${completedActions.length} step${completedActions.length !== 1 ? 's' : ''} completed. To resubmit, start a new task.`)
+        setAgentState('completed')
+        setCompletion({
+          summary: `Paused before submit — ${completedActions.length} step${completedActions.length !== 1 ? 's' : ''} completed`,
+          actions: completedActions.length > 0 ? completedActions : ['No actions completed'],
+          durationMs: duration,
+        })
+        return
+      }
 
       setAgentState('completed')
       setCompletion({
@@ -542,7 +623,54 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
       setErrorMessage(err instanceof Error ? err.message : 'Execution failed')
       setAgentState('error')
     }
-  }, [addSystem])
+  }, [addMessage, addSystem])
+
+  const handleApprove = useCallback(() => {
+    const session = pendingSessionRef.current
+    const plan = session?.state.plan
+    setConfirmation(null)
+
+    if (!plan) {
+      addSystem('No plan to execute.')
+      setAgentState('ready')
+      return
+    }
+
+    // Collect user values for fill/type steps that have no value yet
+    const needsValues = plan.steps.filter(
+      s => (s.action.type === 'fill' || s.action.type === 'type') && !s.action.value
+    )
+
+    if (needsValues.length > 0) {
+      pendingPlanRef.current = plan
+      setFillRequests(needsValues.map(s => ({
+        stepNumber: s.stepNumber,
+        description: s.action.description,
+        selector: s.action.target?.selector ?? '',
+        isPassword: /password|passwd|pwd/i.test(s.action.target?.selector ?? '') ||
+                    /password/i.test(s.action.description),
+      })))
+      return  // stay in awaiting-approval; FillValuesCard will call handleFillValuesSubmit
+    }
+
+    pendingPlanRef.current = plan
+    void executeApprovedPlan(plan, {})
+  }, [addSystem, executeApprovedPlan])
+
+  const handleFillValuesSubmit = useCallback((values: Record<number, string>) => {
+    const plan = pendingPlanRef.current
+    setFillRequests([])
+    if (!plan) { setAgentState('ready'); return }
+    void executeApprovedPlan(plan, values)
+  }, [executeApprovedPlan])
+
+  const handleFillValuesCancel = useCallback(() => {
+    setFillRequests([])
+    pendingPlanRef.current = null
+    pendingSessionRef.current = null
+    setAgentState('ready')
+    addMessage('sentinel', 'Cancelled. What else can I help you with?')
+  }, [addMessage])
 
   const handleDecline = useCallback(() => {
     setConfirmation(null)
@@ -554,9 +682,11 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
   const handleStop = useCallback(() => {
     abortControllerRef.current?.abort()
     setConfirmation(null)
+    setFillRequests([])
     setCompletion(null)
     setActivityDetail('')
     pendingSessionRef.current = null
+    pendingPlanRef.current = null
     setAgentState('ready')
     addMessage('sentinel', 'Stopped. Ready for a new task.')
   }, [addMessage])
@@ -602,10 +732,12 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
     setMessages([WELCOME])
     setAgentState('ready')
     setConfirmation(null)
+    setFillRequests([])
     setCompletion(null)
     setErrorMessage(null)
     setActivityDetail('')
     pendingSessionRef.current = null
+    pendingPlanRef.current = null
     lastPromptRef.current = ''
   }, [])
 
@@ -643,6 +775,14 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
             req={confirmation}
             onApprove={handleApprove}
             onDecline={handleDecline}
+          />
+        )}
+
+        {fillRequests.length > 0 && (
+          <FillValuesCard
+            requests={fillRequests}
+            onSubmit={handleFillValuesSubmit}
+            onCancel={handleFillValuesCancel}
           />
         )}
 

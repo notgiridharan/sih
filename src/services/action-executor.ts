@@ -329,7 +329,11 @@ export class ActionExecutor {
       }
     }
 
-    if (isSensitiveFormSubmit(action, this.records)) {
+    // When the user pre-approved this specific step in the approval UI, the plan-level
+    // approval doubles as confirmation for both form submission and password fills.
+    const isPreApproved = this.approvedSteps.has(step.stepNumber)
+
+    if (!isPreApproved && isSensitiveFormSubmit(action, this.records)) {
       return {
         stepNumber: step.stepNumber,
         action,
@@ -339,7 +343,7 @@ export class ActionExecutor {
     }
 
     if ((action.type === 'fill' || action.type === 'type') && isPasswordAction(action)) {
-      if (!hasUserProvidedSource(action)) {
+      if (!hasUserProvidedSource(action) && !isPreApproved) {
         return {
           stepNumber: step.stepNumber,
           action,

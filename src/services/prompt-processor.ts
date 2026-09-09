@@ -7,7 +7,7 @@ import type {
   LLMRequest,
 } from '../types/agent'
 import type { ScanResult } from '../types/scan'
-import { scan, scanWithOCR, scanWithML } from './scanner'
+import { scanWithOCR, scanWithML } from './scanner'
 import { sanitize } from './sanitization'
 import type { SanitizationOutput } from './sanitization'
 import { detectPromptInjections } from './injection-detector'
