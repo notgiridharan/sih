@@ -301,12 +301,14 @@ describe('ActionExecutor — password field protection', () => {
 // --- Form submission blocking ---
 
 describe('ActionExecutor — form submission blocking', () => {
-  it('blocks sensitive form submission after fill actions', async () => {
-    const { executor } = makeExecutor({ approvedSteps: new Set([1, 2]) })
+  it('blocks sensitive form submission when steps are NOT pre-approved', async () => {
+    // Fill (step 1) is approved so it completes; submit (step 2) is NOT approved, so the
+    // form-submit guard fires and returns 'blocked' rather than executing the submission.
+    const { executor } = makeExecutor({ approvedSteps: new Set([1]) })
 
     const fillStep = makeStep(1, {
       type: 'fill',
-      requiresApproval: true,
+      requiresApproval: true,    // fill always requires approval (enforced by safety validator)
       target: { selector: 'input[name="email"]', tag: 'input', description: 'Email', attributes: { 'data-value-source': 'user-provided' } },
       value: 'test@test.com',
     })
@@ -323,8 +325,29 @@ describe('ActionExecutor — form submission blocking', () => {
     expect(result.records[1].result.detail).toBe(SUBMISSION_REQUIRES_USER_APPROVAL)
   })
 
-  it('blocks input[type=submit] after type actions', async () => {
+  it('allows form submission when steps are pre-approved (user reviewed the plan)', async () => {
+    // Both steps in approvedSteps — user reviewed and approved the plan
     const { executor } = makeExecutor({ approvedSteps: new Set([1, 2]) })
+
+    const fillStep = makeStep(1, {
+      type: 'fill',
+      requiresApproval: true,
+      target: { selector: 'input[name="email"]', tag: 'input', description: 'Email', attributes: { 'data-value-source': 'user-provided' } },
+      value: 'test@test.com',
+    })
+    const submitStep = makeStep(2, {
+      type: 'click',
+      target: { selector: 'button[type="submit"]', tag: 'button', description: 'Submit form', attributes: { type: 'submit' } },
+    }, { dependsOn: [1] })
+
+    const plan = makePlan([fillStep, submitStep])
+    const result = await executor.executePlan(plan)
+
+    expect(result.status).toBe('completed')
+  })
+
+  it('blocks input[type=submit] after type actions when NOT pre-approved', async () => {
+    const { executor } = makeExecutor({ approvedSteps: new Set() })
 
     const typeStep = makeStep(1, {
       type: 'type',
@@ -601,5 +624,225 @@ describe('MockDOMBridge', () => {
     const bridge = new MockDOMBridge()
     expect(await bridge.isPasswordField('input[type="password"]')).toBe(true)
     expect(await bridge.isPasswordField('input[name="email"]')).toBe(false)
+  })
+})
+
+// --- End-to-end plan execution ---
+
+describe('End-to-end: full plan execution flow', () => {
+  it('executes a navigate + extract plan without any blocks', async () => {
+    const bridge = new MockDOMBridge()
+    const plan = makePlan([
+      makeStep(1, { type: 'navigate', target: null as unknown as Action['target'], value: 'https://example.com' }),
+      makeStep(2, { type: 'extract', target: { selector: 'body', tag: 'body', description: 'page body', attributes: {} }, value: null }, { dependsOn: [1] }),
+    ])
+    const executor = new ActionExecutor({ bridge, approvedSteps: new Set([1, 2]) })
+    const result = await executor.executePlan(plan)
+
+    expect(result.status).toBe('completed')
+    expect(result.records).toHaveLength(2)
+    expect(result.records[0].result.status).toBe('completed')
+    expect(result.records[1].result.status).toBe('completed')
+    expect(bridge.log.map(l => l.method)).toEqual(['navigate', 'extract'])
+  })
+
+  it('executes a navigate + type + click search plan', async () => {
+    const bridge = new MockDOMBridge()
+    const plan = makePlan([
+      makeStep(1, { type: 'navigate', target: null as unknown as Action['target'], value: 'https://google.com' }),
+      makeStep(2, {
+        type: 'type',
+        target: { selector: 'input[name="q"]', tag: 'input', description: 'Search input', attributes: {} },
+        value: 'Claude AI',
+      }, { dependsOn: [1] }),
+      makeStep(3, {
+        type: 'click',
+        target: { selector: 'input[type="submit"]', tag: 'input', description: 'Search button', attributes: {} },
+      }, { dependsOn: [2] }),
+    ])
+    const executor = new ActionExecutor({ bridge, approvedSteps: new Set([1, 2, 3]) })
+    const result = await executor.executePlan(plan)
+
+    expect(result.status).toBe('completed')
+    expect(bridge.log[1]).toEqual({ method: 'type', args: ['input[name="q"]', 'Claude AI'] })
+  })
+
+  it('executes a login flow (fill email + fill password + submit) when all steps are pre-approved', async () => {
+    const bridge = new MockDOMBridge()
+    const plan = makePlan([
+      makeStep(1, { type: 'navigate', target: null as unknown as Action['target'], value: 'https://example.com/login' }),
+      makeStep(2, {
+        type: 'fill',
+        target: { selector: 'input[type="email"]', tag: 'input', description: 'Fill email field', attributes: { 'data-value-source': 'user-provided' } },
+        value: 'user@example.com',
+        requiresApproval: true,
+      }, { dependsOn: [1] }),
+      makeStep(3, {
+        type: 'fill',
+        target: { selector: 'input[type="password"]', tag: 'input', description: 'Fill password field', attributes: { 'data-value-source': 'user-provided' } },
+        value: 'hunter2',
+        requiresApproval: true,
+      }, { dependsOn: [2] }),
+      makeStep(4, {
+        type: 'click',
+        target: { selector: 'button[type="submit"]', tag: 'button', description: 'Submit login form', attributes: {} },
+        requiresApproval: true,
+      }, { dependsOn: [3] }),
+    ])
+    const executor = new ActionExecutor({ bridge, approvedSteps: new Set([1, 2, 3, 4]) })
+    const result = await executor.executePlan(plan)
+
+    expect(result.status).toBe('completed')
+    expect(result.records).toHaveLength(4)
+    expect(result.records[2].result.status).toBe('completed')   // password fill
+    expect(result.records[3].result.status).toBe('completed')   // form submit
+  })
+
+  it('bypasses password guard when step is pre-approved (user-provided data attribute set)', async () => {
+    const bridge = new MockDOMBridge()
+    const step = makeStep(5, {
+      type: 'fill',
+      target: { selector: 'input[type="password"]', tag: 'input', description: 'Password', attributes: { 'data-value-source': 'user-provided' } },
+      value: 'secret',
+      requiresApproval: true,
+    })
+    const executor = new ActionExecutor({ bridge, approvedSteps: new Set([5]) })
+    const rec = await executor.executeStep(step)
+
+    expect(rec.result.status).toBe('completed')
+    expect(bridge.log[0]).toEqual({ method: 'fill', args: ['input[type="password"]', 'secret'] })
+  })
+
+  it('bypasses password guard when step is in approvedSteps without data attribute', async () => {
+    // Password fill with no data-value-source attribute, but step is pre-approved
+    const bridge = new MockDOMBridge()
+    const step = makeStep(7, {
+      type: 'fill',
+      target: { selector: 'input[name="pwd"]', tag: 'input', description: 'Password field', attributes: {} },
+      value: 'mypassword',
+      requiresApproval: true,
+    })
+    const executor = new ActionExecutor({ bridge, approvedSteps: new Set([7]) })
+    const rec = await executor.executeStep(step)
+
+    expect(rec.result.status).toBe('completed')
+    expect(bridge.log[0].method).toBe('fill')
+  })
+
+  it('still blocks password fill when step is NOT in approvedSteps and no user-provided source', async () => {
+    const bridge = new MockDOMBridge()
+    const step = makeStep(1, {
+      type: 'fill',
+      target: { selector: 'input[type="password"]', tag: 'input', description: 'Password', attributes: {} },
+      value: 'secret',
+      requiresApproval: true,
+    })
+    const executor = new ActionExecutor({ bridge, approvedSteps: new Set() })  // step 1 not approved
+    const rec = await executor.executeStep(step)
+
+    expect(rec.result.status).toBe('failed')
+    expect(rec.result.error).toContain('user-provided')
+  })
+
+  it('bypasses form-submit guard when all steps are pre-approved', async () => {
+    const bridge = new MockDOMBridge()
+    const plan = makePlan([
+      makeStep(1, {
+        type: 'fill',
+        target: { selector: 'input[type="email"]', tag: 'input', description: 'Fill email', attributes: { 'data-value-source': 'user-provided' } },
+        value: 'user@example.com',
+        requiresApproval: true,
+      }),
+      makeStep(2, {
+        type: 'click',
+        target: { selector: 'button[type="submit"]', tag: 'button', description: 'Submit the form', attributes: {} },
+        requiresApproval: true,
+      }, { dependsOn: [1] }),
+    ])
+    const executor = new ActionExecutor({ bridge, approvedSteps: new Set([1, 2]) })
+    const result = await executor.executePlan(plan)
+
+    // Should complete, NOT return 'blocked'
+    expect(result.status).toBe('completed')
+    expect(result.stoppedReason).toBeNull()
+  })
+
+  it('still blocks form-submit when steps are NOT pre-approved', async () => {
+    const bridge = new MockDOMBridge()
+    // Fill (step 1) is approved so it completes; submit (step 2) is NOT in approvedSteps, so
+    // the form-submit guard fires and returns 'blocked' before executing the submission.
+    const plan = makePlan([
+      makeStep(1, {
+        type: 'fill',
+        target: { selector: 'input[type="email"]', tag: 'input', description: 'Fill email', attributes: { 'data-value-source': 'user-provided' } },
+        value: 'user@example.com',
+        requiresApproval: true,   // fill always requires approval (safety validator enforces this)
+      }),
+      makeStep(2, {
+        type: 'click',
+        target: { selector: 'button[type="submit"]', tag: 'button', description: 'Submit the form', attributes: {} },
+        requiresApproval: false,
+      }, { dependsOn: [1] }),
+    ])
+    const executor = new ActionExecutor({ bridge, approvedSteps: new Set([1]) })  // fill approved, submit NOT
+    const result = await executor.executePlan(plan)
+
+    expect(result.status).toBe('blocked')
+    expect(result.stoppedReason).toBe(SUBMISSION_REQUIRES_USER_APPROVAL)
+  })
+
+  it('execution records are emitted in order via onExecution', async () => {
+    const bridge = new MockDOMBridge()
+    const plan = makePlan([
+      makeStep(1, { type: 'navigate', target: null as unknown as Action['target'], value: 'https://example.com' }),
+      makeStep(2, { type: 'extract', target: { selector: 'h1', tag: 'h1', description: 'heading', attributes: {} }, value: null }, { dependsOn: [1] }),
+    ])
+    const executor = new ActionExecutor({ bridge, approvedSteps: new Set([1, 2]) })
+
+    const emitted: number[] = []
+    executor.onExecution(rec => emitted.push(rec.stepNumber))
+
+    await executor.executePlan(plan)
+    expect(emitted).toEqual([1, 2])
+  })
+
+  it('does not execute subsequent steps when an earlier step fails', async () => {
+    const bridge = new FailingDOMBridge()
+    const plan = makePlan([
+      makeStep(1, { type: 'click' }),
+      makeStep(2, { type: 'click' }, { dependsOn: [1] }),
+    ])
+    const executor = new ActionExecutor({ bridge, approvedSteps: new Set([1, 2]) })
+    const result = await executor.executePlan(plan)
+
+    expect(result.status).toBe('failed')
+    expect(result.records).toHaveLength(1)  // stopped after step 1 failed
+  })
+
+  it('skips steps whose dependencies were not completed', async () => {
+    const bridge = new FailingDOMBridge()
+    const plan = makePlan([
+      makeStep(1, { type: 'click' }),   // fails
+      makeStep(2, { type: 'click' }, { dependsOn: [] }),   // no dependency on 1 — but plan stops at fail above
+    ])
+    const executor = new ActionExecutor({ bridge, approvedSteps: new Set([1, 2]) })
+    const result = await executor.executePlan(plan)
+
+    // executePlan stops at first failure
+    expect(result.status).toBe('failed')
+  })
+
+  it('extract detail is accessible in execution record', async () => {
+    const bridge = new MockDOMBridge()
+    const step = makeStep(1, {
+      type: 'extract',
+      target: { selector: 'main', tag: 'main', description: 'Main content', attributes: {} },
+    })
+    const executor = new ActionExecutor({ bridge, approvedSteps: new Set([1]) })
+    const rec = await executor.executeStep(step)
+
+    expect(rec.result.status).toBe('completed')
+    expect(rec.result.detail).toContain('Extracted')
+    expect(rec.result.detail).toContain('main')
   })
 })
