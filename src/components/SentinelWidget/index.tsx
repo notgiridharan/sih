@@ -6,10 +6,18 @@ import { ActionExecutor, MockDOMBridge, SUBMISSION_REQUIRES_USER_APPROVAL } from
 import { isExtension, ExtensionDOMBridge } from '../../services/extension-bridge'
 import { initQwen } from '../../services/qwen-planner'
 import { selectLLMProvider, isWebGpuAvailable } from '../../services/llm-provider-selector'
+import {
+  hasVaultCredentials,
+  saveVaultCredentials,
+  loadVaultCredentials,
+  matchVaultField,
+  type VaultCredentials,
+} from '../../services/token-vault'
 
 // ─── Widget-local state type ──────────────────────────────────────────────
 
 type WidgetState =
+  | 'setup'
   | 'ready'
   | 'understanding'
   | 'observing'
@@ -95,6 +103,7 @@ const WELCOME: Message = {
 
 function StatusStrip({ state }: { state: WidgetState }) {
   const labels: Record<WidgetState, string> = {
+    setup: 'Setup',
     ready: 'Ready',
     understanding: 'Understanding',
     observing: 'Observing page',
@@ -107,6 +116,7 @@ function StatusStrip({ state }: { state: WidgetState }) {
   }
 
   const dotClass: Record<WidgetState, string> = {
+    setup: 'approval',
     ready: 'ready',
     understanding: 'running',
     observing: 'running',
@@ -366,6 +376,100 @@ function FillValuesCard({
   )
 }
 
+function SetupCard({ onSave }: { onSave: (creds: VaultCredentials) => void }) {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [password, setPassword] = useState('')
+  const [savePassword, setSavePassword] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState<string[]>([])
+
+  const handleSubmit = async () => {
+    const errs: string[] = []
+    if (!name.trim()) errs.push('Name is required')
+    if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) errs.push('Valid email is required')
+    if (!phone.trim()) errs.push('Phone number is required')
+    if (errs.length > 0) { setErrors(errs); return }
+    setErrors([])
+    setSaving(true)
+    try {
+      await onSave({
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        password: savePassword && password ? password : undefined,
+        googleLinked: false,
+        savedAt: Date.now(),
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', fontSize: 12, padding: '6px 8px', borderRadius: 5,
+    border: '1px solid var(--wb-3)', background: 'var(--wb-2)',
+    color: 'var(--wt-1)', boxSizing: 'border-box', marginTop: 3,
+  }
+  const labelStyle: React.CSSProperties = { fontSize: 11, color: 'var(--wt-3)', display: 'block' }
+  const fieldStyle: React.CSSProperties = { marginBottom: 10 }
+
+  return (
+    <div className="w-confirm">
+      <div className="w-confirm-header">
+        <div className="w-confirm-icon low" style={{ fontSize: 16 }}>🔐</div>
+        <div className="w-confirm-title">One-time Setup</div>
+      </div>
+      <div className="w-confirm-desc" style={{ marginBottom: 12 }}>
+        Store your credentials locally — encrypted with AES-256, never sent anywhere. Sentinel will auto-fill forms for you.
+      </div>
+
+      <div style={fieldStyle}>
+        <label style={labelStyle}>Your name *</label>
+        <input style={inputStyle} type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Full name" autoComplete="name" />
+      </div>
+      <div style={fieldStyle}>
+        <label style={labelStyle}>Email address *</label>
+        <input style={inputStyle} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" />
+      </div>
+      <div style={fieldStyle}>
+        <label style={labelStyle}>Phone / mobile *</label>
+        <input style={inputStyle} type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+91 98765 43210" autoComplete="tel" />
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <input type="checkbox" checked={savePassword} onChange={e => setSavePassword(e.target.checked)} />
+          Save password for auto-fill (optional)
+        </label>
+        {savePassword && (
+          <input style={{ ...inputStyle, marginTop: 6 }} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" autoComplete="new-password" />
+        )}
+      </div>
+
+      {errors.length > 0 && (
+        <div style={{ fontSize: 11, color: '#e06c75', background: 'rgba(224,108,117,0.1)', borderRadius: 5, padding: '5px 8px', marginBottom: 8 }}>
+          {errors.map((e, i) => <div key={i}>{e}</div>)}
+        </div>
+      )}
+
+      <div style={{ fontSize: 10, color: 'var(--wt-3)', marginBottom: 10 }}>
+        Encrypted locally · Stored in IndexedDB + chrome.storage · Never uploaded
+      </div>
+
+      <button
+        className="w-btn w-btn-primary w-btn-sm"
+        style={{ width: '100%' }}
+        onClick={handleSubmit}
+        disabled={saving}
+      >
+        {saving ? 'Saving…' : 'Save & Continue'}
+      </button>
+    </div>
+  )
+}
+
 // ─── Main widget ──────────────────────────────────────────────────────────
 
 export interface SentinelWidgetProps {
@@ -374,7 +478,7 @@ export interface SentinelWidgetProps {
 
 export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
   const [messages, setMessages] = useState<Message[]>([WELCOME])
-  const [agentState, setAgentState] = useState<WidgetState>('ready')
+  const [agentState, setAgentState] = useState<WidgetState>('setup')
   const [inputValue, setInputValue] = useState('')
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null)
   const [fillRequests, setFillRequests] = useState<FillValueRequest[]>([])
@@ -387,8 +491,20 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
   const abortControllerRef = useRef<AbortController | null>(null)
   const pendingSessionRef = useRef<AgentSession | null>(null)
   const pendingPlanRef = useRef<ActionPlan | null>(null)
+  const vaultCredsRef = useRef<VaultCredentials | null>(null)
   const conversationRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // On mount: check if vault credentials exist; skip setup if they do
+  useEffect(() => {
+    hasVaultCredentials().then(async (exists) => {
+      if (exists) {
+        vaultCredsRef.current = await loadVaultCredentials()
+        setAgentState('ready')
+      }
+      // else stay in 'setup'
+    }).catch(() => setAgentState('ready'))
+  }, [])
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -625,6 +741,12 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
     }
   }, [addMessage, addSystem])
 
+  const handleSetupSave = useCallback(async (creds: VaultCredentials) => {
+    await saveVaultCredentials(creds)
+    vaultCredsRef.current = creds
+    setAgentState('ready')
+  }, [])
+
   const handleApprove = useCallback(() => {
     const session = pendingSessionRef.current
     const plan = session?.state.plan
@@ -637,31 +759,52 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
     }
 
     // Collect user values for fill/type steps that have no value yet
-    const needsValues = plan.steps.filter(
+    const nullFillSteps = plan.steps.filter(
       s => (s.action.type === 'fill' || s.action.type === 'type') && !s.action.value
     )
 
-    if (needsValues.length > 0) {
+    // Pre-populate from vault where possible
+    const vaultCreds = vaultCredsRef.current
+    const vaultFilled: Record<number, string> = {}
+    const stillNeedsValues: typeof nullFillSteps = []
+    for (const s of nullFillSteps) {
+      const vaultValue = vaultCreds ? matchVaultField(s.action.description, vaultCreds) : null
+      if (vaultValue) {
+        vaultFilled[s.stepNumber] = vaultValue
+      } else {
+        stillNeedsValues.push(s)
+      }
+    }
+
+    if (stillNeedsValues.length > 0) {
       pendingPlanRef.current = plan
-      setFillRequests(needsValues.map(s => ({
+      // Store vault-filled values so FillValuesCard can merge them
+      setFillRequests(stillNeedsValues.map(s => ({
         stepNumber: s.stepNumber,
         description: s.action.description,
         selector: s.action.target?.selector ?? '',
         isPassword: /password|passwd|pwd/i.test(s.action.target?.selector ?? '') ||
                     /password/i.test(s.action.description),
       })))
+      // Attach vaultFilled to the plan ref so handleFillValuesSubmit can merge
+      ;(pendingPlanRef as React.MutableRefObject<ActionPlan & { _vaultFilled?: Record<number, string> } | null>).current = { ...plan, _vaultFilled: vaultFilled }
       return  // stay in awaiting-approval; FillValuesCard will call handleFillValuesSubmit
     }
 
     pendingPlanRef.current = plan
-    void executeApprovedPlan(plan, {})
+    void executeApprovedPlan(plan, vaultFilled)
   }, [addSystem, executeApprovedPlan])
 
   const handleFillValuesSubmit = useCallback((values: Record<number, string>) => {
-    const plan = pendingPlanRef.current
+    const plan = pendingPlanRef.current as (ActionPlan & { _vaultFilled?: Record<number, string> }) | null
     setFillRequests([])
     if (!plan) { setAgentState('ready'); return }
-    void executeApprovedPlan(plan, values)
+    // Merge vault-pre-filled values with user-entered values; user values win
+    const merged: Record<number, string> = { ...(plan._vaultFilled ?? {}), ...values }
+    const cleanPlan: ActionPlan = { ...plan }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (cleanPlan as any)._vaultFilled
+    void executeApprovedPlan(cleanPlan, merged)
   }, [executeApprovedPlan])
 
   const handleFillValuesCancel = useCallback(() => {
@@ -755,6 +898,17 @@ export function SentinelWidget({ pageSource }: SentinelWidgetProps = {}) {
   const canInput = agentState === 'ready'
   const showActivity = isRunning
   const showPauseResume = isRunning || agentState === 'paused'
+
+  if (agentState === 'setup') {
+    return (
+      <div id="sentinel-widget-root">
+        <StatusStrip state={agentState} />
+        <div className="w-conversation" ref={conversationRef}>
+          <SetupCard onSave={handleSetupSave} />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div id="sentinel-widget-root">
